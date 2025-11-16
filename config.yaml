@@ -1,0 +1,131 @@
+# Genetic Algorithm Comparison Study Configuration
+
+# Dataset Configuration
+dataset:
+  base_path: "data/solomon"
+  # Instances can be specified as:
+  # - Simple names (will auto-search in subfolders): "C101", "R101"
+  # - Full paths: "C1/C101.csv", "R1/R101.csv"
+  # - Empty list [] will auto-discover ALL CSV files from subfolders
+  instances: []  # Empty = auto-discover all datasets from subfolders
+  # Or specify specific instances:
+  # instances:
+  #   - "C101"
+  #   - "R101"
+  #   - "RC101"
+  types:
+    - "C"  # Clustered
+    - "R"  # Random
+    - "RC" # Random-Clustered
+
+# GA Parameters
+ga:
+  population_size: 100
+  max_generations: 500
+  elitism_rate: 0.1
+  crossover_rate: 0.8
+  mutation_rate: 0.1
+  
+# Representations to test
+representations:
+  - "permutation"  # Primary for VRP
+  - "binary"
+  - "real_valued"
+
+# Selection methods to test
+selection_methods:
+  - "roulette_wheel"
+  - "tournament"
+  - "rank"
+  - "stochastic_universal"
+  - "elitism"
+  - "boltzmann"
+
+# Crossover methods (will be filtered by representation)
+crossover_methods:
+  permutation:
+    - "pmx"
+    - "ox"
+    - "cx"
+    - "obx"
+    - "pos"
+    - "erx"
+    - "scx"
+  binary:
+    - "single_point"
+    - "two_point"
+    - "multi_point"
+    - "uniform"
+    - "shuffle"
+  real_valued:
+    - "sbx"
+    - "blx_alpha"
+    - "flat"
+
+# Mutation methods (will be filtered by representation)
+mutation_methods:
+  permutation:
+    - "swap"
+    - "insert"
+    - "inversion"
+    - "scramble"
+    - "displacement"
+  binary:
+    - "bit_flip"
+    - "uniform"
+    - "interchanging"
+  real_valued:
+    - "gaussian"
+    - "polynomial"
+    - "uniform"
+
+# Optuna Tuning Configuration
+optuna:
+  enabled: false  # Disable for full dataset run (takes too long)
+  n_trials: 50
+  timeout: 3600  # seconds
+  save_history: true  # Save all trial results to CSV
+  direction: "minimize"
+  study_name: "ga_comparison"
+  parameters:
+    population_size:
+      type: "int"
+      low: 50
+      high: 200
+    crossover_rate:
+      type: "float"
+      low: 0.6
+      high: 0.95
+    mutation_rate:
+      type: "float"
+      low: 0.05
+      high: 0.3
+    tournament_size:
+      type: "int"
+      low: 2
+      high: 10
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    - "fitness"
+    - "runtime"
+    - "convergence"
+    - "diversity"
+    - "solution_quality"
+  n_runs: 5  # Number of independent runs (reduced for full dataset run)
+  save_results: true
+  save_plots: true
+  save_routes: true
+  save_convergence_history: true  # Save convergence history to CSV for each method
+
+# Output Configuration
+output:
+  results_dir: "results"
+  experiments_dir: "results/experiments"
+  plots_dir: "results/plots"
+  routes_dir: "results/routes"
+  convergence_dir: "results/convergence"  # Directory for CSV convergence history
+  tuning_dir: "results/tuning"  # Directory for Optuna tuning results CSV
+  verbose: true
+

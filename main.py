@@ -1,0 +1,398 @@
+"""
+Main script for GA Method Comparison Study
+"""
+
+import argparse
+import yaml
+import os
+import json
+from pathlib import Path
+import numpy as np
+from typing import List, Dict, Tuple
+
+from src.data.solomon_parser import SolomonParser
+from src.ga.genetic_algorithm import GAConfig, GeneticAlgorithm
+from src.evaluation.evaluator import ExperimentEvaluator
+from src.evaluation.metrics import ComparisonMetrics
+from src.visualization.route_plotter import RoutePlotter
+from src.visualization.result_plotter import ResultPlotter
+from src.tuning.optuna_tuner import OptunaTuner
+
+
+def load_config(config_path: str) -> dict:
+    """Load configuration from YAML file"""
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    return config
+
+
+def create_output_dirs(config: dict):
+    """Create output directories"""
+    output_config = config.get('output', {})
+    dirs = [
+        output_config.get('results_dir', 'results'),
+        output_config.get('experiments_dir', 'results/experiments'),
+        output_config.get('plots_dir', 'results/plots'),
+        output_config.get('routes_dir', 'results/routes'),
+        output_config.get('convergence_dir', 'results/convergence'),
+        output_config.get('tuning_dir', 'results/tuning'),
+    ]
+    for dir_path in dirs:
+        os.makedirs(dir_path, exist_ok=True)
+
+
+def generate_method_combinations(config: dict) -> List[Tuple[str, GAConfig]]:
+    """
+    Generate all method combinations to test
+    
+    Returns:
+        List of (method_name, GAConfig) tuples
+    """
+    combinations = []
+    
+    representations = config.get('representations', ['permutation'])
+    selection_methods = config.get('selection_methods', ['tournament'])
+    crossover_configs = config.get('crossover_methods', {})
+    mutation_configs = config.get('mutation_methods', {})
+    
+    ga_base = config.get('ga', {})
+    
+    for rep in representations:
+        crossovers = crossover_configs.get(rep, [])
+        mutations = mutation_configs.get(rep, [])
+        
+        for sel in selection_methods:
+            for cross in crossovers:
+                for mut in mutations:
+                    method_name = f"{rep}_{sel}_{cross}_{mut}"
+                    
+                    ga_config = GAConfig(
+                        population_size=ga_base.get('population_size', 100),
+                        max_generations=ga_base.get('max_generations', 500),
+                        crossover_rate=ga_base.get('crossover_rate', 0.8),
+                        mutation_rate=ga_base.get('mutation_rate', 0.1),
+                        elitism_rate=ga_base.get('elitism_rate', 0.1),
+                        tournament_size=ga_base.get('tournament_size', 3),
+                        selection_method=sel,
+                        crossover_method=cross,
+                        mutation_method=mut,
+                        representation=rep,
+                        verbose=config.get('output', {}).get('verbose', True)
+                    )
+                    
+                    combinations.append((method_name, ga_config))
+    
+    return combinations
+
+
+def run_comparison_study(config: dict):
+    """Run complete comparison study"""
+    print("="*80)
+    print("Genetic Algorithm Method Comparison Study")
+    print("="*80)
+    
+    # Create output directories
+    create_output_dirs(config)
+    
+    # Get output config (needed later for summary)
+    output_config = config.get('output', {})
+    
+    # Load dataset
+    dataset_config = config.get('dataset', {})
+    base_path = dataset_config.get('base_path', 'data/solomon')
+    instances = dataset_config.get('instances', [])
+    
+    # If instances specified as simple names, try to find in subfolders
+    if instances:
+        # Expand instances to include subfolder paths
+        expanded_instances = []
+        for instance_name in instances:
+            instance_name_clean = instance_name.replace('.txt', '').replace('.csv', '')
+            
+            # Try different possible locations
+            possible_paths = [
+                os.path.join(base_path, instance_name),  # Direct path
+                os.path.join(base_path, instance_name_clean + '.csv'),  # CSV in root
+                os.path.join(base_path, instance_name_clean + '.txt'),  # TXT in root
+            ]
+            
+            # Try subfolder structure (C1/C101.csv, R1/R101.csv, etc)
+            if instance_name_clean[0] in ['C', 'R']:
+                folder_num = instance_name_clean[1] if len(instance_name_clean) > 1 and instance_name_clean[1].isdigit() else '1'
+                folder_name = instance_name_clean[0] + folder_num
+                possible_paths.extend([
+                    os.path.join(base_path, folder_name, instance_name_clean + '.csv'),
+                    os.path.join(base_path, folder_name, instance_name_clean + '.txt'),
+                ])
+            
+            # Find first existing path
+            found_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    found_path = path
+                    break
+            
+            if found_path:
+                expanded_instances.append(found_path)
+            else:
+                print(f"Warning: Instance file not found: {instance_name}")
+                print(f"  Tried paths: {possible_paths[:3]}...")
+        
+        instances = expanded_instances if expanded_instances else None
+    
+    # If no instances specified, try to auto-discover from subfolders
+    if not instances:
+        print("No instances specified. Auto-discovering ALL datasets from subfolders...")
+        instances = []
+        
+        # Look for CSV files in subfolders
+        for subfolder in ['C1', 'C2', 'R1', 'R2', 'RC1', 'RC2']:
+            subfolder_path = os.path.join(base_path, subfolder)
+            if os.path.exists(subfolder_path):
+                csv_files = [f for f in os.listdir(subfolder_path) 
+                            if f.endswith(('.csv', '.CSV'))]
+                # Include ALL CSV files (no limit)
+                for csv_file in sorted(csv_files):
+                    instances.append(os.path.join(subfolder_path, csv_file))
+        
+        if not instances:
+            print("No instances found. Using default test instance.")
+            instances = ['test_instance.txt']
+        else:
+            print(f"Found {len(instances)} instances to process")
+    
+    # Process each instance
+    all_results = {}
+    processed_instances = 0
+    
+    for instance_path in instances:
+        # Normalize path for cross-platform compatibility
+        instance_path = os.path.normpath(instance_path)
+        
+        if not os.path.exists(instance_path):
+            print(f"Warning: Instance file not found: {instance_path}")
+            continue
+        
+        instance_file_name = os.path.basename(instance_path)
+        print(f"\n{'='*80}")
+        print(f"Processing instance: {instance_file_name}")
+        print(f"Path: {instance_path}")
+        print(f"{'='*80}")
+        
+        # Parse instance
+        parser = SolomonParser()
+        instance = parser.parse(instance_path)
+        print(f"Instance: {instance.name}")
+        print(f"Type: {instance.type}")
+        print(f"Customers: {instance.num_customers}")
+        print(f"Capacity: {instance.vehicle_capacity}")
+        
+        # Generate method combinations
+        method_combinations = generate_method_combinations(config)
+        print(f"\nTotal method combinations to test: {len(method_combinations)}")
+        
+        # Setup directories for this instance
+        instance_results_dir = os.path.join(output_config.get('experiments_dir', 'results/experiments'), instance.name)
+        instance_plots_dir = os.path.join(output_config.get('plots_dir', 'results/plots'), instance.name)
+        instance_routes_dir = os.path.join(output_config.get('routes_dir', 'results/routes'), instance.name)
+        instance_convergence_dir = os.path.join(output_config.get('convergence_dir', 'results/convergence'), instance.name)
+        instance_tuning_dir = os.path.join(output_config.get('tuning_dir', 'results/tuning'), instance.name)
+        
+        os.makedirs(instance_results_dir, exist_ok=True)
+        os.makedirs(instance_plots_dir, exist_ok=True)
+        os.makedirs(instance_routes_dir, exist_ok=True)
+        os.makedirs(instance_convergence_dir, exist_ok=True)
+        os.makedirs(instance_tuning_dir, exist_ok=True)
+        
+        # Optuna tuning (if enabled)
+        optuna_config = config.get('optuna', {})
+        if optuna_config.get('enabled', False):
+            print("\nRunning Optuna parameter tuning...")
+            # Tune for first method combination as example
+            if method_combinations:
+                method_name, base_config = method_combinations[0]
+                tuner = OptunaTuner(
+                    instance,
+                    representation=base_config.representation,
+                    selection_method=base_config.selection_method,
+                    crossover_method=base_config.crossover_method,
+                    mutation_method=base_config.mutation_method,
+                    n_trials=optuna_config.get('n_trials', 50),
+                    timeout=optuna_config.get('timeout', 3600),
+                    save_history=optuna_config.get('save_history', True),
+                    history_dir=instance_tuning_dir
+                )
+                tuning_result = tuner.tune(
+                    study_name=f"{instance.name}_tuning",
+                    instance_name=instance.name
+                )
+                # Update config with best parameters
+                best_config = tuner.get_best_config(tuning_result['best_params'])
+                method_combinations[0] = (method_name, best_config)
+        
+        # Run experiments
+        save_history = config.get('evaluation', {}).get('save_convergence_history', True)
+        evaluator = ExperimentEvaluator(
+            instance,
+            n_runs=config.get('evaluation', {}).get('n_runs', 10),
+            save_history=save_history,
+            history_dir=instance_convergence_dir
+        )
+        
+        comparison_results = evaluator.compare_methods(method_combinations)
+        all_results[instance.name] = comparison_results
+        processed_instances += 1
+        
+        # Save results
+        results_file = os.path.join(instance_results_dir, f"{instance.name}_results.json")
+        results_dict = {
+            method: {
+                'mean_fitness': float(m.mean_fitness),
+                'std_fitness': float(m.std_fitness),
+                'mean_runtime': float(m.mean_runtime),
+                'std_runtime': float(m.std_runtime),
+                'best_fitness': float(m.best_fitness),
+                'worst_fitness': float(m.worst_fitness),
+            }
+            for method, m in comparison_results.items()
+        }
+        
+        with open(results_file, 'w') as f:
+            json.dump(results_dict, f, indent=2)
+        print(f"\nResults saved to {results_file}")
+        
+        # Visualizations
+        if config.get('evaluation', {}).get('save_plots', True):
+            plotter = ResultPlotter()
+            
+            # Comparison bar chart
+            plotter.plot_comparison_bar(
+                comparison_results,
+                metric='mean_fitness',
+                save_path=os.path.join(instance_plots_dir, f"{instance.name}_fitness_comparison.png"),
+                show=False
+            )
+            
+            plotter.plot_comparison_bar(
+                comparison_results,
+                metric='mean_runtime',
+                save_path=os.path.join(instance_plots_dir, f"{instance.name}_runtime_comparison.png"),
+                show=False
+            )
+            
+            # Heatmap
+            plotter.plot_comparison_heatmap(
+                comparison_results,
+                save_path=os.path.join(instance_plots_dir, f"{instance.name}_heatmap.png"),
+                show=False
+            )
+        
+        # Visualize best route
+        if config.get('evaluation', {}).get('save_routes', True):
+            # Find best method
+            best_method = min(comparison_results.items(), key=lambda x: x[1].mean_fitness)[0]
+            best_config = next(config for name, config in method_combinations if name == best_method)
+            
+            # Run once more to get best route
+            ga = GeneticAlgorithm(instance, best_config)
+            result = ga.run()
+            
+            route_plotter = RoutePlotter(instance)
+            route_plotter.plot_routes(
+                result.best_routes,
+                title=f"Best Solution - {instance.name} ({best_method})",
+                save_path=os.path.join(instance_routes_dir, f"{instance.name}_best_route.png"),
+                show=False
+            )
+    
+    # Summary across all instances
+    print(f"\n{'='*80}")
+    print("SUMMARY ACROSS ALL INSTANCES")
+    print(f"{'='*80}")
+    
+    if not all_results:
+        print("\nNo results to summarize. Please ensure:")
+        print("1. Solomon benchmark datasets are downloaded")
+        print("2. Dataset files are placed in data/solomon/ directory")
+        print("3. Instance names in config.yaml match the actual file names")
+        print("\nYou can use test_instance.txt for testing:")
+        print("  python run_experiment.py")
+        return
+    
+    # Aggregate results
+    summary_results = {}
+    for instance_name, results in all_results.items():
+        for method_name, metrics in results.items():
+            if method_name not in summary_results:
+                summary_results[method_name] = {
+                    'fitnesses': [],
+                    'runtimes': [],
+                }
+            summary_results[method_name]['fitnesses'].append(metrics.mean_fitness)
+            summary_results[method_name]['runtimes'].append(metrics.mean_runtime)
+    
+    # Calculate averages
+    summary_metrics = {}
+    for method_name, data in summary_results.items():
+        summary_metrics[method_name] = ComparisonMetrics(
+            method_name=method_name,
+            mean_fitness=np.mean(data['fitnesses']),
+            std_fitness=np.std(data['fitnesses']),
+            mean_runtime=np.mean(data['runtimes']),
+            std_runtime=np.std(data['runtimes']),
+            mean_convergence=0.0,
+            std_convergence=0.0,
+            mean_diversity=0.0,
+            std_diversity=0.0,
+            best_fitness=np.min(data['fitnesses']),
+            worst_fitness=np.max(data['fitnesses']),
+            success_rate=1.0
+        )
+    
+    # Print summary
+    print("\nAverage Performance Across All Instances:")
+    print(f"{'Method':<40} {'Mean Fitness':<15} {'Mean Runtime':<15}")
+    print("-" * 70)
+    for method_name, metrics in sorted(summary_metrics.items(), 
+                                      key=lambda x: x[1].mean_fitness):
+        print(f"{method_name:<40} {metrics.mean_fitness:>12.2f} {metrics.mean_runtime:>12.2f}s")
+    
+    # Save summary
+    summary_file = os.path.join(output_config.get('results_dir', 'results'), 'summary.json')
+    summary_dict = {
+        method: {
+            'mean_fitness': float(m.mean_fitness),
+            'std_fitness': float(m.std_fitness),
+            'mean_runtime': float(m.mean_runtime),
+            'std_runtime': float(m.std_runtime),
+        }
+        for method, m in summary_metrics.items()
+    }
+    
+    with open(summary_file, 'w') as f:
+        json.dump(summary_dict, f, indent=2)
+    print(f"\nSummary saved to {summary_file}")
+    
+    print("\n" + "="*80)
+    print("Comparison study completed!")
+    print("="*80)
+
+
+def main():
+    """Main entry point"""
+    parser = argparse.ArgumentParser(description='GA Method Comparison Study')
+    parser.add_argument('--config', type=str, default='config.yaml',
+                       help='Path to configuration file')
+    
+    args = parser.parse_args()
+    
+    # Load configuration
+    config = load_config(args.config)
+    
+    # Run comparison study
+    run_comparison_study(config)
+
+
+if __name__ == '__main__':
+    main()
+

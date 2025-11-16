@@ -1,0 +1,73 @@
+# Test Configuration - Simplified for quick testing
+
+# Dataset Configuration
+dataset:
+  base_path: "data/solomon"
+  instances:
+    - "test_instance.txt"  # Use test instance
+  types:
+    - "C"
+
+# GA Parameters (reduced for testing)
+ga:
+  population_size: 50
+  max_generations: 100
+  elitism_rate: 0.1
+  crossover_rate: 0.8
+  mutation_rate: 0.1
+  tournament_size: 3
+  
+# Representations to test (only permutation for VRP)
+representations:
+  - "permutation"
+
+# Selection methods to test (subset)
+selection_methods:
+  - "tournament"
+  - "roulette_wheel"
+  - "rank"
+
+# Crossover methods
+crossover_methods:
+  permutation:
+    - "pmx"
+    - "ox"
+    - "cx"
+
+# Mutation methods
+mutation_methods:
+  permutation:
+    - "swap"
+    - "insert"
+    - "inversion"
+
+# Optuna Tuning Configuration (disabled for quick test)
+optuna:
+  enabled: false
+  n_trials: 10
+  timeout: 300
+  save_history: true  # Save all trial results to CSV
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    - "fitness"
+    - "runtime"
+    - "convergence"
+    - "diversity"
+  n_runs: 3  # Reduced for testing
+  save_results: true
+  save_plots: true
+  save_routes: true
+  save_convergence_history: true  # Save convergence history to CSV
+
+# Output Configuration
+output:
+  results_dir: "results"
+  experiments_dir: "results/experiments"
+  plots_dir: "results/plots"
+  routes_dir: "results/routes"
+  convergence_dir: "results/convergence"  # Directory for CSV convergence history
+  tuning_dir: "results/tuning"  # Directory for Optuna tuning results CSV
+  verbose: true
+
