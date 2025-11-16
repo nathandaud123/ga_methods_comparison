@@ -2,93 +2,77 @@
 
 Comprehensive comparison study of Genetic Algorithm operators (representation, selection, crossover, mutation) for Vehicle Routing Problem using Solomon benchmark datasets.
 
-## Project Structure
+## 🚀 Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run with all datasets (will take hours!)
+python main.py --config config.yaml
+
+# Or run with logging
+python run_full_experiment.py
+```
+
+## 📊 Status
+
+- ✅ **GitHub Repository**: [ga_methods_comparison](https://github.com/NathanDaud123/ga_methods_comparison)
+- ✅ **56 Solomon Instances** ready (C1, C2, R1, R2, RC1, RC2)
+- ✅ **354 Method Combinations** to test per instance
+- ✅ All results saved to CSV/JSON
+
+## 📁 Project Structure
 
 ```
 ga_method_comparison/
 ├── README.md
 ├── requirements.txt
-├── config.yaml
-├── config_test.yaml
+├── config.yaml              # Main config (all datasets)
+├── config_test.yaml         # Quick test config
 ├── main.py
-├── run_experiment.py
+├── run_experiment.py        # Quick test
+├── run_full_experiment.py   # Full run with logging
 ├── src/
-│   ├── __init__.py
 │   ├── data/
-│   │   ├── __init__.py
-│   │   └── solomon_parser.py
-│   ├── representation/
-│   │   ├── __init__.py
-│   │   ├── binary.py
-│   │   ├── real_valued.py
-│   │   └── permutation.py
-│   ├── selection/
-│   │   ├── __init__.py
-│   │   └── selection_methods.py
-│   ├── crossover/
-│   │   ├── __init__.py
-│   │   ├── binary_crossover.py
-│   │   ├── real_crossover.py
-│   │   └── permutation_crossover.py
-│   ├── mutation/
-│   │   ├── __init__.py
-│   │   ├── binary_mutation.py
-│   │   ├── real_mutation.py
-│   │   └── permutation_mutation.py
+│   │   └── solomon_parser.py    # Supports CSV format
+│   ├── representation/          # Binary, Real-valued, Permutation
+│   ├── selection/               # 7 methods
+│   ├── crossover/               # 16+ methods
+│   ├── mutation/                # 14+ methods
 │   ├── ga/
-│   │   ├── __init__.py
 │   │   └── genetic_algorithm.py
 │   ├── evaluation/
-│   │   ├── __init__.py
 │   │   ├── metrics.py
-│   │   └── evaluator.py
+│   │   └── evaluator.py         # Saves CSV convergence
 │   ├── visualization/
-│   │   ├── __init__.py
 │   │   ├── route_plotter.py
 │   │   └── result_plotter.py
 │   └── tuning/
-│       ├── __init__.py
-│       └── optuna_tuner.py
-├── data/
-│   └── solomon/
-│       ├── C101.txt
-│       ├── C201.txt
-│       ├── R101.txt
-│       ├── R201.txt
-│       ├── RC101.txt
-│       └── RC201.txt
-├── results/
-│   ├── experiments/
-│   │   └── {instance_name}/
-│   │       └── {instance_name}_results.json
-│   ├── plots/
-│   │   └── {instance_name}/
-│   │       ├── {instance_name}_fitness_comparison.png
-│   │       ├── {instance_name}_runtime_comparison.png
-│   │       └── {instance_name}_heatmap.png
-│   ├── routes/
-│   │   └── {instance_name}/
-│   │       └── {instance_name}_best_route.png
-│   ├── convergence/
-│   │   └── {instance_name}/
-│   │       └── {method_name}_convergence.csv
-├── tuning/
-│   │   └── {instance_name}/
-│   │       ├── {instance_name}_optuna_tuning.csv
-│   │       └── {instance_name}_optuna_tuning_summary.csv
-│   └── summary.json
-└── notebooks/
-    └── analysis.ipynb
+│       └── optuna_tuner.py      # Saves CSV tuning history
+├── data/solomon/
+│   ├── C1/  (9 instances)
+│   ├── C2/  (8 instances)
+│   ├── R1/  (12 instances)
+│   ├── R2/  (11 instances)
+│   ├── RC1/ (8 instances)
+│   └── RC2/ (8 instances)
+└── results/
+    ├── experiments/{instance}/    # JSON results
+    ├── plots/{instance}/          # Comparison charts
+    ├── routes/{instance}/         # Route visualizations
+    ├── convergence/{instance}/    # CSV per method
+    └── tuning/{instance}/         # CSV Optuna results
 ```
 
-## Features
+## 🎯 Features
 
 ### Representations
 - **Binary**: Bit string encoding
 - **Real-valued**: Continuous value encoding
-- **Permutation**: Order-based encoding (for VRP/TSP)
+- **Permutation**: Order-based encoding (primary for VRP)
 
-### Selection Methods
+### Selection Methods (7)
 - Roulette Wheel Selection
 - Tournament Selection
 - Rank Selection
@@ -97,158 +81,74 @@ ga_method_comparison/
 - Stairwise Selection (SWS)
 - Boltzmann Selection
 
-### Crossover Operators
+### Crossover Operators (16+)
+- **Permutation**: PMX, OX, CX, OBX, POS, ERX, SCX
 - **Binary**: Single-point, Two-point, Multi-point, Uniform, Shuffle, Arithmetic
-- **Real-valued**: SBX, BLX-α, Flat, SPX, UNDX, PCX
-- **Permutation**: PMX, OX, CX, OBX, POS, ER/ERX, IX, SCX
+- **Real-valued**: SBX, BLX-α, Flat
 
-### Mutation Operators
+### Mutation Operators (14+)
+- **Permutation**: Swap, Insert, Inversion, Scramble, Displacement, Exchange
 - **Binary**: Bit Flip, Uniform, Interchanging, Reversing
 - **Real-valued**: Gaussian, Polynomial, Uniform, Non-uniform
-- **Permutation**: Swap, Insert, Inversion, Scramble, Displacement, Exchange
 
-## Installation
+## 📝 Output Files
 
-```bash
-# Clone repository
-git clone <repository-url>
-cd ga_method_comparison
+### Convergence CSV
+Each method saves convergence history:
+- `generation`: Generation number
+- `fitness_run_1..N`: Fitness per run
+- `diversity_run_1..N`: Diversity per run
+- `fitness_mean/std/min/max`: Statistics
+- `diversity_mean/std`: Diversity statistics
 
-# Install dependencies
-pip install -r requirements.txt
+### Optuna Tuning CSV
+When tuning enabled:
+- `{instance}_optuna_tuning.csv`: All trials with parameters
+- `{instance}_optuna_tuning_summary.csv`: Summary statistics
 
-# Or install as package
-pip install -e .
-```
+## ⚙️ Configuration
 
-## Dataset Setup
-
-Solomon benchmark datasets need to be downloaded separately. Place them in `data/solomon/` directory.
-
-You can download from:
-- [Solomon Benchmark](http://web.cba.neu.edu/~msolomon/problems.htm)
-- Or use the provided download script (if available)
-
-Expected structure:
-```
-data/solomon/
-├── C101.txt
-├── C201.txt
-├── R101.txt
-├── R201.txt
-├── RC101.txt
-└── RC201.txt
-```
-
-## Usage
-
-### Basic Usage
-
-```bash
-python main.py --config config.yaml
-```
-
-### Custom Configuration
-
-Edit `config.yaml` to customize:
-- Dataset selection
-- GA parameters
-- Selection of operators to compare
-- Optuna tuning parameters
-
-### Running Specific Experiments
-
-You can modify `config.yaml` to test specific combinations:
-
+### Run All Datasets
 ```yaml
-representations:
-  - "permutation"  # Focus on permutation only
-
-selection_methods:
-  - "tournament"
-  - "roulette_wheel"
-
-crossover_methods:
-  permutation:
-    - "pmx"
-    - "ox"
+dataset:
+  instances: []  # Auto-discover all CSV files
 ```
 
-### Parameter Tuning with Optuna
-
-Enable Optuna tuning in `config.yaml`:
-
+### Run Specific Instances
 ```yaml
-optuna:
-  enabled: true
-  n_trials: 50
-  timeout: 3600
+dataset:
+  instances:
+    - "C101"
+    - "R101"
+    - "RC101"
 ```
 
-## Output Structure
-
-Results are organized by instance name for easy management:
-
-```
-results/
-├── experiments/
-│   └── {instance_name}/
-│       └── {instance_name}_results.json
-├── plots/
-│   └── {instance_name}/
-│       ├── {instance_name}_fitness_comparison.png
-│       ├── {instance_name}_runtime_comparison.png
-│       └── {instance_name}_heatmap.png
-├── routes/
-│   └── {instance_name}/
-│       └── {instance_name}_best_route.png
-├── convergence/
-│   └── {instance_name}/
-│       └── {method_name}_convergence.csv  # Contains generation-by-generation data
-└── summary.json
+### Adjust Parameters
+```yaml
+ga:
+  population_size: 100
+  max_generations: 500
+  n_runs: 5  # Independent runs per method
 ```
 
-### Convergence CSV Format
+## 📊 Expected Runtime
 
-Each method's convergence history is saved as CSV with the following columns:
-- `generation`: Generation number (1, 2, 3, ...)
-- `fitness_run_1`, `fitness_run_2`, ...: Fitness value for each run
-- `diversity_run_1`, `diversity_run_2`, ...: Diversity value for each run
-- `fitness_mean`, `fitness_std`, `fitness_min`, `fitness_max`: Statistics across runs
-- `diversity_mean`, `diversity_std`: Diversity statistics
+- **56 instances** × **354 methods** × **5 runs** = **99,120 GA executions**
+- Estimated: ~3-5 days on typical hardware
+- Each GA run: ~1-2 minutes (500 generations, 100 population)
 
-You can use these CSV files to create custom convergence plots in your analysis.
+## 🔍 Analysis
 
-### Optuna Tuning CSV Format
+All results are saved in structured format for easy analysis:
+- JSON for programmatic access
+- CSV for Excel/Python analysis
+- PNG for visual inspection
 
-When Optuna tuning is enabled, detailed trial history is saved:
-- `{instance_name}_optuna_tuning.csv`: Contains all trials with columns:
-  - `trial_number`: Trial number
-  - `state`: Trial state (COMPLETE, PRUNED, etc.)
-  - `value`: Best fitness value from GA run
-  - `population_size`, `max_generations`, `crossover_rate`, `mutation_rate`, `tournament_size`, `elitism_rate`: Hyperparameters
-  - `runtime`: Execution time for this trial
-  - `convergence_generation`: Generation when best solution was found
-  - `final_diversity`: Average population diversity
-  - `is_best`: Whether this trial achieved best value
-  - `cumulative_best`: Best value up to this trial
-  - `improvement`: Improvement over previous best
+## 📚 Citation
 
-- `{instance_name}_optuna_tuning_summary.csv`: Summary statistics including:
-  - Best/mean/std/min/max values
-  - Best hyperparameters found
-  - Mean runtime and trial counts
+If you use this code, please cite relevant papers from the comparison study document.
 
-This allows complete documentation and analysis of the hyperparameter tuning process.
+## 🔗 Links
 
-## Evaluation Metrics
-
-- **Fitness/Cost**: Total distance/cost of solution
-- **Runtime**: Execution time
-- **Convergence Speed**: Generations to convergence
-- **Population Diversity**: Diversity metrics
-- **Solution Quality**: Gap from best known solution
-
-## Citation
-
-If you use this code in your research, please cite the relevant papers mentioned in the comparison study document.
+- GitHub: https://github.com/NathanDaud123/ga_methods_comparison
+- Solomon Benchmark: http://web.cba.neu.edu/~msolomon/problems.htm
