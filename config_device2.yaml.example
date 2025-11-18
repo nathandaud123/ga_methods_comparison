@@ -1,0 +1,10 @@
+# Example configuration for Device 2
+# Copy this to config.yaml on device 2 and set device_id
+
+# Multi-Device Configuration
+device:
+  device_id: "device2"  # CHANGE THIS: Unique ID for this device
+  total_devices: 3      # CHANGE THIS: Total number of devices
+
+# ... rest of config same as config.yaml ...
+

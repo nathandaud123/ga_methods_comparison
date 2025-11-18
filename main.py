@@ -7,6 +7,7 @@ import yaml
 import os
 import json
 from pathlib import Path
+from datetime import datetime
 import numpy as np
 from typing import List, Dict, Tuple
 
@@ -14,6 +15,8 @@ from src.data.solomon_parser import SolomonParser
 from src.ga.genetic_algorithm import GAConfig, GeneticAlgorithm
 from src.evaluation.evaluator import ExperimentEvaluator
 from src.evaluation.metrics import ComparisonMetrics
+from src.evaluation.checkpoint import CheckpointManager
+from src.evaluation.task_distributor import TaskDistributor
 from src.visualization.route_plotter import RoutePlotter
 from src.visualization.result_plotter import ResultPlotter
 from src.tuning.optuna_tuner import OptunaTuner
@@ -97,6 +100,38 @@ def run_comparison_study(config: dict):
     # Get output config (needed later for summary)
     output_config = config.get('output', {})
     
+    # Initialize checkpoint manager
+    checkpoint_file = output_config.get('checkpoint_file', 'results/checkpoint.json')
+    checkpoint_manager = CheckpointManager(checkpoint_file)
+    
+    # Initialize task distributor for multi-device execution
+    device_config = config.get('device', {})
+    device_id = device_config.get('device_id', None)
+    total_devices = device_config.get('total_devices', 1)
+    task_distributor = None
+    
+    if device_id and total_devices > 1:
+        task_distributor = TaskDistributor(device_id, total_devices, checkpoint_file)
+        print(f"\n{'='*80}")
+        print(f"MULTI-DEVICE MODE: Device {device_id} of {total_devices}")
+        print(f"{'='*80}")
+        summary = task_distributor.get_summary()
+        print(f"Assigned instances: {summary['assigned_instances']}")
+        print(f"Instances: {summary['instances'][:5]}..." if len(summary['instances']) > 5 else f"Instances: {summary['instances']}")
+        print(f"{'='*80}\n")
+    
+    # Show checkpoint status
+    if checkpoint_manager.state['completed_instances'] or checkpoint_manager.state['completed_methods']:
+        print(f"\n{'='*80}")
+        print("CHECKPOINT STATUS")
+        print(f"{'='*80}")
+        summary = checkpoint_manager.get_progress_summary()
+        print(f"Completed instances: {summary['completed_instances']}")
+        print(f"Instances with progress: {summary['instances_with_progress']}")
+        for inst, num_methods in summary['completed_methods_by_instance'].items():
+            print(f"  - {inst}: {num_methods} methods completed")
+        print(f"{'='*80}\n")
+    
     # Load dataset
     dataset_config = config.get('dataset', {})
     base_path = dataset_config.get('base_path', 'data/solomon')
@@ -161,6 +196,18 @@ def run_comparison_study(config: dict):
         else:
             print(f"Found {len(instances)} instances to process")
     
+    # Filter instances if multi-device mode
+    if task_distributor:
+        original_count = len(instances)
+        instance_names = [os.path.basename(os.path.normpath(ip)).split('.')[0] for ip in instances]
+        filtered_names = task_distributor.filter_instances(instance_names)
+        # Filter instance_paths to match filtered names
+        instances = [ip for ip in instances 
+                    if os.path.basename(os.path.normpath(ip)).split('.')[0] in filtered_names]
+        print(f"\n{'='*80}")
+        print(f"DEVICE {device_id}: Filtered {len(instances)}/{original_count} instances")
+        print(f"{'='*80}\n")
+    
     # Process each instance
     all_results = {}
     processed_instances = 0
@@ -174,14 +221,33 @@ def run_comparison_study(config: dict):
             continue
         
         instance_file_name = os.path.basename(instance_path)
-        print(f"\n{'='*80}")
-        print(f"Processing instance: {instance_file_name}")
-        print(f"Path: {instance_path}")
-        print(f"{'='*80}")
         
         # Parse instance
         parser = SolomonParser()
         instance = parser.parse(instance_path)
+        
+        # Check if instance is already complete
+        if checkpoint_manager.is_instance_complete(instance.name):
+            print(f"\n{'='*80}")
+            print(f"Skipping instance: {instance.name} (already completed)")
+            print(f"{'='*80}")
+            # Load existing results instead of recomputing
+            results_file = os.path.join(
+                output_config.get('experiments_dir', 'results/experiments'),
+                instance.name,
+                f"{instance.name}_results.json"
+            )
+            if os.path.exists(results_file):
+                with open(results_file, 'r') as f:
+                    results_dict = json.load(f)
+                    # Convert back to ComparisonMetrics (simplified)
+                    all_results[instance.name] = results_dict
+            continue
+        
+        print(f"\n{'='*80}")
+        print(f"Processing instance: {instance_file_name}")
+        print(f"Path: {instance_path}")
+        print(f"{'='*80}")
         print(f"Instance: {instance.name}")
         print(f"Type: {instance.type}")
         print(f"Customers: {instance.num_customers}")
@@ -190,6 +256,9 @@ def run_comparison_study(config: dict):
         # Generate method combinations
         method_combinations = generate_method_combinations(config)
         print(f"\nTotal method combinations to test: {len(method_combinations)}")
+        print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        import sys
+        sys.stdout.flush()  # Force flush output
         
         # Setup directories for this instance
         instance_results_dir = os.path.join(output_config.get('experiments_dir', 'results/experiments'), instance.name)
@@ -231,35 +300,81 @@ def run_comparison_study(config: dict):
                 method_combinations[0] = (method_name, best_config)
         
         # Run experiments
-        save_history = config.get('evaluation', {}).get('save_convergence_history', True)
+        eval_config = config.get('evaluation', {})
+        save_history = eval_config.get('save_convergence_history', True)
+        parallel = eval_config.get('parallel', False)
+        n_jobs = eval_config.get('n_jobs', None)
+        
         evaluator = ExperimentEvaluator(
             instance,
-            n_runs=config.get('evaluation', {}).get('n_runs', 10),
+            n_runs=eval_config.get('n_runs', 10),
             save_history=save_history,
-            history_dir=instance_convergence_dir
+            history_dir=instance_convergence_dir,
+            checkpoint_manager=checkpoint_manager,
+            parallel=parallel,
+            n_jobs=n_jobs
         )
         
         comparison_results = evaluator.compare_methods(method_combinations)
-        all_results[instance.name] = comparison_results
-        processed_instances += 1
         
-        # Save results
+        # Cleanup parallel executor resources
+        evaluator.cleanup()
+        
+        # Load existing results if available (for summary)
         results_file = os.path.join(instance_results_dir, f"{instance.name}_results.json")
-        results_dict = {
-            method: {
-                'mean_fitness': float(m.mean_fitness),
-                'std_fitness': float(m.std_fitness),
-                'mean_runtime': float(m.mean_runtime),
-                'std_runtime': float(m.std_runtime),
-                'best_fitness': float(m.best_fitness),
-                'worst_fitness': float(m.worst_fitness),
-            }
-            for method, m in comparison_results.items()
-        }
+        existing_results = {}
+        if os.path.exists(results_file):
+            try:
+                with open(results_file, 'r') as f:
+                    existing_results = json.load(f)
+            except:
+                pass
         
-        with open(results_file, 'w') as f:
-            json.dump(results_dict, f, indent=2)
-        print(f"\nResults saved to {results_file}")
+        # Merge with new results
+        if comparison_results:
+            # Update with new results
+            for method, metrics in comparison_results.items():
+                existing_results[method] = {
+                    'mean_fitness': float(metrics.mean_fitness),
+                    'std_fitness': float(metrics.std_fitness),
+                    'mean_runtime': float(metrics.mean_runtime),
+                    'std_runtime': float(metrics.std_runtime),
+                    'best_fitness': float(metrics.best_fitness),
+                    'worst_fitness': float(metrics.worst_fitness),
+                }
+            all_results[instance.name] = comparison_results
+            processed_instances += 1
+        elif existing_results:
+            # No new results but have existing - use those for summary
+            all_results[instance.name] = existing_results
+        
+        # Mark instance as complete if all methods are done
+        total_methods = len(method_combinations)
+        completed_methods = checkpoint_manager.state['completed_methods'].get(instance.name, [])
+        if len(completed_methods) >= total_methods:
+            checkpoint_manager.mark_instance_complete(instance.name)
+            print(f"\n[OK] Instance {instance.name} completed: {len(completed_methods)}/{total_methods} methods")
+        
+        # Save results (update with any new data)
+        if comparison_results or existing_results:
+            # Merge results
+            results_dict = existing_results.copy() if existing_results else {}
+            
+            # Add/update with new results
+            if comparison_results:
+                for method, metrics in comparison_results.items():
+                    results_dict[method] = {
+                        'mean_fitness': float(metrics.mean_fitness),
+                        'std_fitness': float(metrics.std_fitness),
+                        'mean_runtime': float(metrics.mean_runtime),
+                        'std_runtime': float(metrics.std_runtime),
+                        'best_fitness': float(metrics.best_fitness),
+                        'worst_fitness': float(metrics.worst_fitness),
+                    }
+            
+            with open(results_file, 'w') as f:
+                json.dump(results_dict, f, indent=2)
+            print(f"\nResults saved to {results_file} ({len(results_dict)} methods)")
         
         # Visualizations
         if config.get('evaluation', {}).get('save_plots', True):

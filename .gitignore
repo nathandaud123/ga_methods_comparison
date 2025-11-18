@@ -32,8 +32,9 @@ env/
 *.swo
 *~
 
-# Results
+# Results (keep checkpoint for tracking)
 results/
+!results/checkpoint.json  # Keep checkpoint file for version control
 *.png
 *.pdf
 

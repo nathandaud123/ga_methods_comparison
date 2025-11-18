@@ -1,5 +1,12 @@
 # Genetic Algorithm Comparison Study Configuration
 
+# Multi-Device Configuration (for parallel execution across multiple devices)
+device:
+  device_id: null  # Set to unique ID (e.g., "device1", "laptop", "server1") for multi-device mode
+  total_devices: 1  # Total number of devices running in parallel
+  # If device_id is set and total_devices > 1, each device will work on different instances
+  # Distribution: instances are assigned using modulo (device 1 gets 0, N, 2N...; device 2 gets 1, N+1...)
+
 # Dataset Configuration
 dataset:
   base_path: "data/solomon"
@@ -118,6 +125,8 @@ evaluation:
   save_plots: true
   save_routes: true
   save_convergence_history: true  # Save convergence history to CSV for each method
+  parallel: true  # Enable parallel execution
+  n_jobs: null  # Number of parallel workers (null = auto: CPU_COUNT - 1)
 
 # Output Configuration
 output:
@@ -127,5 +136,6 @@ output:
   routes_dir: "results/routes"
   convergence_dir: "results/convergence"  # Directory for CSV convergence history
   tuning_dir: "results/tuning"  # Directory for Optuna tuning results CSV
+  checkpoint_file: "results/checkpoint.json"  # Checkpoint file for resuming
   verbose: true
 

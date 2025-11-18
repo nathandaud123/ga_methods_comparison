@@ -1,0 +1,28 @@
+# Configuration untuk AI CENTER UB DGX UB
+# Copy ke config.yaml di AI Center
+
+# Multi-Device Configuration
+device:
+  device_id: "aicenter"  # Unique ID untuk AI Center
+  total_devices: 2       # Total: Laptop + AI Center
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    - "fitness"
+    - "runtime"
+    - "convergence"
+    - "diversity"
+    - "solution_quality"
+  n_runs: 5
+  save_results: true
+  save_plots: true
+  save_routes: true
+  save_convergence_history: true
+  parallel: true  # Gunakan SEMUA core AI Center
+  n_jobs: null    # Auto-detect (akan pakai semua core yang tersedia)
+  # Atau set manual jika tahu jumlah core:
+  # n_jobs: 64  # Contoh: jika AI Center punya 64 cores
+
+# ... rest sama dengan config.yaml ...
+

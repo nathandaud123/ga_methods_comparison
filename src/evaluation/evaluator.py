@@ -1,5 +1,6 @@
 """
 Evaluator for running multiple experiments and collecting results
+Supports both sequential and parallel execution
 """
 
 import numpy as np
@@ -9,6 +10,8 @@ from typing import List, Dict, Tuple, Optional
 from ..ga.genetic_algorithm import GeneticAlgorithm, GAConfig, GAResult
 from ..data.solomon_parser import VRPInstance
 from .metrics import ExperimentMetrics, ComparisonMetrics, MetricsCalculator
+from .checkpoint import CheckpointManager
+from .parallel_executor import ParallelExperimentExecutor
 import time
 
 
@@ -16,18 +19,33 @@ class ExperimentEvaluator:
     """Run multiple experiments and evaluate performance"""
     
     def __init__(self, instance: VRPInstance, n_runs: int = 10, save_history: bool = True, 
-                 history_dir: Optional[str] = None):
+                 history_dir: Optional[str] = None, checkpoint_manager: Optional[CheckpointManager] = None,
+                 parallel: bool = False, n_jobs: Optional[int] = None):
         self.instance = instance
         self.n_runs = n_runs
         self.metrics_calc = MetricsCalculator()
         self.save_history = save_history
         self.history_dir = history_dir or "results/convergence"
+        self.checkpoint_manager = checkpoint_manager
+        self.parallel = parallel
+        self.n_jobs = n_jobs
+        
         if self.save_history:
             os.makedirs(self.history_dir, exist_ok=True)
+        
+        # Initialize parallel executor if needed
+        if self.parallel:
+            checkpoint_file = getattr(checkpoint_manager, 'checkpoint_file', 'results/checkpoint.json') if checkpoint_manager else 'results/checkpoint.json'
+            self.parallel_executor = ParallelExperimentExecutor(
+                instance, n_runs, n_jobs=n_jobs, checkpoint_file=checkpoint_file
+            )
+        else:
+            self.parallel_executor = None
     
     def run_experiment(self, config: GAConfig, method_name: str = "") -> List[ExperimentMetrics]:
         """
         Run multiple independent runs of GA with given configuration
+        Supports checkpoint/resume functionality and parallel execution
         
         Args:
             config: GA configuration
@@ -36,38 +54,108 @@ class ExperimentEvaluator:
         Returns:
             List of experiment metrics for each run
         """
+        # Use parallel execution if enabled
+        if self.parallel and self.parallel_executor:
+            return self._run_experiment_parallel(config, method_name)
+        else:
+            return self._run_experiment_sequential(config, method_name)
+    
+    def _run_experiment_parallel(self, config: GAConfig, method_name: str) -> List[ExperimentMetrics]:
+        """Run experiments in parallel"""
+        results = self.parallel_executor.run_method_parallel(config, method_name)
+        
+        # Note: Convergence history saving for parallel mode would need to be handled differently
+        # For now, we skip it in parallel mode (can be added later if needed)
+        
+        return results
+    
+    def _run_experiment_sequential(self, config: GAConfig, method_name: str) -> List[ExperimentMetrics]:
+        """
+        Run multiple independent runs sequentially (original implementation)
+        """
+        # Check checkpoint
+        instance_name = self.instance.name
+        completed_runs = set()
+        
+        if self.checkpoint_manager:
+            # Check if method is already complete
+            if self.checkpoint_manager.is_method_complete(instance_name, method_name, self.n_runs):
+                print(f"  Method {method_name} already completed (checkpoint)")
+                if instance_name in self.checkpoint_manager.state['partial_progress']:
+                    method_progress = self.checkpoint_manager.state['partial_progress'][instance_name].get(method_name, {})
+                    if 'status' in method_progress and method_progress['status'] == 'complete':
+                        print(f"  Skipping {method_name} (already complete)")
+                        return []
+            
+            # Get completed runs
+            completed_runs = self.checkpoint_manager.get_completed_runs(instance_name, method_name)
+            if completed_runs:
+                print(f"  Resuming {method_name}: {len(completed_runs)}/{self.n_runs} runs already completed")
+        
         results = []
         all_fitness_history = []
         all_diversity_history = []
         
         for run in range(self.n_runs):
-            print(f"Run {run + 1}/{self.n_runs}...")
+            run_key = run + 1  # 1-indexed for checkpoint
             
-            # Run GA
-            ga = GeneticAlgorithm(self.instance, config)
-            result = ga.run()
+            # Skip if already completed
+            if run_key in completed_runs:
+                print(f"  Run {run_key}/{self.n_runs} (already completed, skipping)")
+                continue
             
-            # Store history for CSV
-            if self.save_history and method_name:
-                all_fitness_history.append(result.fitness_history)
-                all_diversity_history.append(result.diversity_history)
+            print(f"Run {run_key}/{self.n_runs}...")
             
-            # Calculate metrics
-            metrics = ExperimentMetrics(
-                fitness=result.best_fitness,
-                runtime=result.runtime,
-                convergence_generation=result.convergence_generation,
-                diversity=np.mean(result.diversity_history) if result.diversity_history else 0.0,
-                solution_quality=0.0,  # Can be updated with best known solution
-                num_routes=len(result.best_routes),
-                total_distance=result.best_fitness
-            )
-            
-            results.append(metrics)
+            try:
+                # Run GA
+                ga = GeneticAlgorithm(self.instance, config)
+                result = ga.run()
+                
+                # Store history for CSV
+                if self.save_history and method_name:
+                    all_fitness_history.append(result.fitness_history)
+                    all_diversity_history.append(result.diversity_history)
+                
+                # Calculate metrics
+                metrics = ExperimentMetrics(
+                    fitness=result.best_fitness,
+                    runtime=result.runtime,
+                    convergence_generation=result.convergence_generation,
+                    diversity=np.mean(result.diversity_history) if result.diversity_history else 0.0,
+                    solution_quality=0.0,
+                    num_routes=len(result.best_routes),
+                    total_distance=result.best_fitness
+                )
+                
+                results.append(metrics)
+                
+                # Save checkpoint after each run
+                if self.checkpoint_manager:
+                    checkpoint_data = {
+                        'fitness': float(metrics.fitness),
+                        'runtime': float(metrics.runtime),
+                        'convergence_generation': int(metrics.convergence_generation),
+                        'diversity': float(metrics.diversity),
+                    }
+                    self.checkpoint_manager.mark_run_complete(
+                        instance_name, method_name, run_key, checkpoint_data
+                    )
+                
+            except Exception as e:
+                print(f"  Error in run {run_key}: {e}")
+                continue
         
-        # Save convergence history to CSV
-        if self.save_history and method_name and all_fitness_history:
+        total_completed = len(results) + len(completed_runs)
+        
+        # Save convergence history if we have all runs
+        if self.save_history and method_name and all_fitness_history and total_completed >= self.n_runs:
             self._save_convergence_history(method_name, all_fitness_history, all_diversity_history)
+        
+        # Mark method as complete if all runs done
+        if self.checkpoint_manager and total_completed >= self.n_runs:
+            self.checkpoint_manager.mark_method_complete(instance_name, method_name)
+            if len(results) == 0 and len(completed_runs) >= self.n_runs:
+                return []
         
         return results
     
@@ -130,6 +218,7 @@ class ExperimentEvaluator:
     def compare_methods(self, configs: List[Tuple[str, GAConfig]]) -> Dict[str, ComparisonMetrics]:
         """
         Compare multiple GA configurations
+        Skips methods that are already complete in checkpoint
         
         Args:
             configs: List of (method_name, config) tuples
@@ -138,13 +227,36 @@ class ExperimentEvaluator:
             Dictionary mapping method names to aggregated metrics
         """
         comparison_results = {}
+        instance_name = self.instance.name
         
         for method_name, config in configs:
+            # Check if method is already complete
+            if self.checkpoint_manager and \
+               self.checkpoint_manager.is_method_complete(instance_name, method_name, self.n_runs):
+                print(f"\n{'='*60}")
+                print(f"Skipping {method_name} (already completed - {self.n_runs}/{self.n_runs} runs)")
+                print(f"{'='*60}")
+                # Try to load from saved results JSON (will be aggregated in summary)
+                # Method is complete so we don't need to re-run
+                continue
+            
             print(f"\n{'='*60}")
             print(f"Evaluating method: {method_name}")
             print(f"{'='*60}")
             
             experiment_results = self.run_experiment(config, method_name=method_name)
+            
+            # Skip if no results AND method is marked complete (all runs were cached)
+            if not experiment_results:
+                if self.checkpoint_manager and \
+                   self.checkpoint_manager.is_method_complete(instance_name, method_name, self.n_runs):
+                    # Method complete, results should be in saved JSON file
+                    continue
+                else:
+                    # Method incomplete but no results - might be error, skip for now
+                    print(f"  Warning: No results for {method_name}, skipping")
+                    continue
+            
             aggregated = self.metrics_calc.aggregate_metrics(experiment_results)
             aggregated.method_name = method_name
             
@@ -156,4 +268,9 @@ class ExperimentEvaluator:
             print(f"  Best Fitness: {aggregated.best_fitness:.2f}")
         
         return comparison_results
+    
+    def cleanup(self):
+        """Cleanup resources (especially parallel executor)"""
+        if self.parallel_executor:
+            self.parallel_executor.cleanup()
 
