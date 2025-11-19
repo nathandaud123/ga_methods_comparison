@@ -471,75 +471,107 @@ def run_comparison_study(config: dict):
         os.makedirs(instance_tuning_dir, exist_ok=True)
         
         # Optuna tuning (if enabled) - MUST run BEFORE experiments
+        # Each method combination gets its own tuning to find optimal parameters
         optuna_config = config.get('optuna', {})
-        best_params_global = None  # Store best parameters from tuning
         
         if optuna_config.get('enabled', False):
             print("\n" + "="*80)
-            print("STEP 1: OPTUNA PARAMETER TUNING")
+            print("STEP 1: OPTUNA PARAMETER TUNING (PER METHOD)")
             print("="*80)
-            print("Tuning parameters to find optimal configuration...")
+            print(f"Tuning parameters for each of {len(method_combinations)} method combinations...")
+            print("Each method will be tuned separately to find its optimal parameters.\n")
             
             if method_combinations:
-                # Use first method combination as representative for tuning
-                # (or can tune per method if needed)
-                method_name, base_config = method_combinations[0]
-                print(f"\nTuning for method: {method_name}")
-                print(f"  Representation: {base_config.representation}")
-                print(f"  Selection: {base_config.selection_method}")
-                print(f"  Crossover: {base_config.crossover_method}")
-                print(f"  Mutation: {base_config.mutation_method}")
-                
-                tuner = OptunaTuner(
-                    instance,
-                    representation=base_config.representation,
-                    selection_method=base_config.selection_method,
-                    crossover_method=base_config.crossover_method,
-                    mutation_method=base_config.mutation_method,
-                    n_trials=optuna_config.get('n_trials', 50),
-                    timeout=optuna_config.get('timeout', 3600),
-                    save_history=optuna_config.get('save_history', True),
-                    history_dir=instance_tuning_dir
-                )
-                
-                tuning_result = tuner.tune(
-                    study_name=f"{instance.name}_tuning",
-                    instance_name=instance.name
-                )
-                
-                # Store best parameters to apply to ALL methods
-                best_params_global = tuning_result['best_params']
-                
-                print(f"\n{'='*80}")
-                print("TUNING COMPLETE - Best Parameters Found:")
-                print(f"{'='*80}")
-                for key, value in best_params_global.items():
-                    print(f"  {key}: {value}")
-                print(f"  Best Fitness: {tuning_result['best_value']:.2f}")
-                print(f"{'='*80}\n")
-                
-                # Update ALL method combinations with best parameters
-                print("Applying best parameters to ALL method combinations...")
                 updated_methods = []
-                for method_name, method_config in method_combinations:
-                    # Create new config with best parameters but keep method-specific operators
+                total_methods = len(method_combinations)
+                
+                for idx, (method_name, method_config) in enumerate(method_combinations, 1):
+                    print(f"\n{'='*80}")
+                    print(f"TUNING {idx}/{total_methods}: {method_name}")
+                    print(f"{'='*80}")
+                    print(f"  Representation: {method_config.representation}")
+                    print(f"  Selection: {method_config.selection_method}")
+                    print(f"  Crossover: {method_config.crossover_method}")
+                    print(f"  Mutation: {method_config.mutation_method}")
+                    
+                    # Check if tuning already done (from checkpoint or previous run)
+                    tuning_file = os.path.join(
+                        instance_tuning_dir,
+                        f"{instance.name}_{method_name}_optuna_tuning.csv"
+                    )
+                    
+                    if os.path.exists(tuning_file):
+                        print(f"  Tuning already exists, loading best parameters...")
+                        try:
+                            import pandas as pd
+                            df = pd.read_csv(tuning_file)
+                            if len(df) > 0:
+                                best_row = df.loc[df['value'].idxmin()]
+                                best_params = {
+                                    'population_size': int(best_row['population_size']),
+                                    'max_generations': int(best_row['max_generations']),
+                                    'crossover_rate': float(best_row['crossover_rate']),
+                                    'mutation_rate': float(best_row['mutation_rate']),
+                                    'tournament_size': int(best_row['tournament_size']),
+                                    'elitism_rate': float(best_row['elitism_rate']),
+                                }
+                                print(f"  Loaded best parameters (fitness: {best_row['value']:.2f})")
+                            else:
+                                best_params = None
+                        except Exception as e:
+                            print(f"  Warning: Could not load tuning file: {e}")
+                            best_params = None
+                    else:
+                        best_params = None
+                    
+                    # Run tuning if not already done
+                    if best_params is None:
+                        tuner = OptunaTuner(
+                            instance,
+                            representation=method_config.representation,
+                            selection_method=method_config.selection_method,
+                            crossover_method=method_config.crossover_method,
+                            mutation_method=method_config.mutation_method,
+                            n_trials=optuna_config.get('n_trials', 50),
+                            timeout=optuna_config.get('timeout', 3600),
+                            save_history=optuna_config.get('save_history', True),
+                            history_dir=instance_tuning_dir
+                        )
+                        
+                        tuning_result = tuner.tune(
+                            study_name=f"{instance.name}_{method_name}_tuning",
+                            instance_name=f"{instance.name}_{method_name}"
+                        )
+                        
+                        best_params = tuning_result['best_params']
+                        
+                        print(f"\n  Tuning complete!")
+                        print(f"  Best Fitness: {tuning_result['best_value']:.2f}")
+                        print(f"  Best Parameters:")
+                        for key, value in best_params.items():
+                            print(f"    {key}: {value}")
+                    
+                    # Create updated config with best parameters for this method
                     updated_config = GAConfig(
-                        population_size=best_params_global['population_size'],
-                        max_generations=best_params_global['max_generations'],
-                        crossover_rate=best_params_global['crossover_rate'],
-                        mutation_rate=best_params_global['mutation_rate'],
-                        elitism_rate=best_params_global.get('elitism_rate', method_config.elitism_rate),
-                        tournament_size=best_params_global.get('tournament_size', method_config.tournament_size),
+                        population_size=best_params['population_size'],
+                        max_generations=best_params['max_generations'],
+                        crossover_rate=best_params['crossover_rate'],
+                        mutation_rate=best_params['mutation_rate'],
+                        elitism_rate=best_params.get('elitism_rate', method_config.elitism_rate),
+                        tournament_size=best_params.get('tournament_size', method_config.tournament_size),
                         selection_method=method_config.selection_method,  # Keep method-specific
                         crossover_method=method_config.crossover_method,   # Keep method-specific
                         mutation_method=method_config.mutation_method,     # Keep method-specific
                         representation=method_config.representation,      # Keep method-specific
                         verbose=method_config.verbose
                     )
+                    
                     updated_methods.append((method_name, updated_config))
+                    print(f"  ✓ Method {idx}/{total_methods} tuned and ready")
                 
                 method_combinations = updated_methods
-                print(f"  Updated {len(method_combinations)} method combinations with best parameters")
+                print(f"\n{'='*80}")
+                print(f"ALL {len(method_combinations)} METHODS TUNED AND READY")
                 print(f"{'='*80}\n")
             else:
                 print("Warning: No method combinations to tune!")
