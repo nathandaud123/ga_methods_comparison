@@ -79,7 +79,7 @@ class OptunaTuner:
         if self.save_history:
             trial_info = {
                 'trial_number': trial.number,
-                'state': str(trial.state),
+                'state': 'COMPLETE',  # Trial state (COMPLETE if we reach here)
                 'value': result.best_fitness,
                 'population_size': population_size,
                 'max_generations': max_generations,
