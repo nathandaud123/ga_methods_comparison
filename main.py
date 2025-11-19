@@ -362,9 +362,21 @@ def run_comparison_study(config: dict):
         # Mark instance as complete if all methods are done
         total_methods = len(method_combinations)
         completed_methods = checkpoint_manager.state['completed_methods'].get(instance.name, [])
-        if len(completed_methods) >= total_methods:
+        
+        # Only mark complete if:
+        # 1. total_methods > 0 (there are methods to test)
+        # 2. All methods are actually completed
+        if total_methods > 0 and len(completed_methods) >= total_methods:
             checkpoint_manager.mark_instance_complete(instance.name)
             print(f"\n[OK] Instance {instance.name} completed: {len(completed_methods)}/{total_methods} methods")
+        elif total_methods == 0:
+            # All methods were skipped (already complete from checkpoint)
+            # Check if instance is actually complete by checking all methods in checkpoint
+            all_methods_complete = len(completed_methods) > 0
+            if all_methods_complete:
+                # Verify instance is truly complete - don't mark if no methods were run
+                print(f"\n[INFO] Instance {instance.name}: All methods already completed in checkpoint ({len(completed_methods)} methods)")
+                # Don't mark as complete here - let it be marked when methods are actually verified
         
         # Save results (update with any new data)
         if comparison_results or existing_results:
@@ -387,8 +399,8 @@ def run_comparison_study(config: dict):
                 json.dump(results_dict, f, indent=2)
             print(f"\nResults saved to {results_file} ({len(results_dict)} methods)")
         
-        # Visualizations
-        if config.get('evaluation', {}).get('save_plots', True):
+        # Visualizations (only if we have results)
+        if config.get('evaluation', {}).get('save_plots', True) and comparison_results:
             plotter = ResultPlotter()
             
             # Comparison bar chart
@@ -412,9 +424,11 @@ def run_comparison_study(config: dict):
                 save_path=os.path.join(instance_plots_dir, f"{instance.name}_heatmap.png"),
                 show=False
             )
+        elif config.get('evaluation', {}).get('save_plots', True):
+            print(f"  Skipping plots (no new results to visualize)")
         
-        # Visualize best route
-        if config.get('evaluation', {}).get('save_routes', True):
+        # Visualize best route (only if we have results)
+        if config.get('evaluation', {}).get('save_routes', True) and comparison_results:
             # Find best method
             best_method = min(comparison_results.items(), key=lambda x: x[1].mean_fitness)[0]
             best_config = next(config for name, config in method_combinations if name == best_method)
@@ -430,6 +444,8 @@ def run_comparison_study(config: dict):
                 save_path=os.path.join(instance_routes_dir, f"{instance.name}_best_route.png"),
                 show=False
             )
+        elif config.get('evaluation', {}).get('save_routes', True):
+            print(f"  Skipping route visualization (no new results)")
     
     # Summary across all instances
     print(f"\n{'='*80}")
