@@ -9,9 +9,10 @@ device:
 # Optuna Tuning Configuration - IMPORTANT: Tuning runs FIRST before experiments
 optuna:
   enabled: true  # ALWAYS enabled - tuning runs FIRST before experiments
-  n_trials: 50
+  n_trials: 1    # 1 trial per method (parallel tuning untuk 150 methods sekaligus)
   timeout: 3600  # seconds
-  save_history: true  # Save all trial results to CSV
+  save_history: true  # Save all trial results to CSV (semua riwayat tercatat)
+  parallel_tuning: true  # Enable parallel tuning untuk multiple methods sekaligus
 
 # Evaluation Configuration
 evaluation:
@@ -21,16 +22,17 @@ evaluation:
     - "convergence"
     - "diversity"
     - "solution_quality"
-  n_runs: 5
+  n_runs: 1      # Hanya 1 run setelah tuning (sudah pakai best parameters)
   save_results: true
   save_plots: true
   save_routes: true
   save_convergence_history: true
   parallel: true  # Enable parallel execution
-  n_jobs: 60      # 60 workers untuk AI Center (256 cores, leave some for OS)
+  n_jobs: 150    # 150 workers untuk AI Center (256 cores)
   parallel_methods: true  # Enable parallel execution untuk multiple methods
   # Dengan parallel_methods: true, semua tasks (methods × runs) dieksekusi dalam satu pool
-  # Jadi bisa 60 tasks sekaligus (mix methods dan runs) - sangat efisien untuk AI Center!
+  # Tuning: 150 methods parallel (1 trial per method)
+  # Experiments: 150 methods × 1 run = 150 tasks parallel
 
 # ... rest sama dengan config.yaml (dataset, ga, representations, selection_methods, crossover_methods, mutation_methods, output) ...
 
