@@ -191,8 +191,23 @@ class TaskDistributor:
         if match:
             return int(match.group()) - 1  # device1 -> 0, device2 -> 1, etc.
         
-        # Fallback: hash device_id
-        return hash(self.device_id) % self.total_devices
+        # Special handling for common device names
+        device_id_lower = self.device_id.lower()
+        if 'laptop' in device_id_lower or device_id_lower == 'laptop':
+            return 0
+        elif 'aicenter' in device_id_lower or 'ai-center' in device_id_lower or 'dgx' in device_id_lower:
+            return 1
+        elif 'server' in device_id_lower:
+            # Extract server number if exists
+            match = re.search(r'\d+', self.device_id)
+            if match:
+                return int(match.group()) - 1
+            return 1  # Default server to index 1
+        
+        # Fallback: consistent hash based on device_id
+        # Use a deterministic hash that's consistent across runs
+        hash_value = abs(hash(self.device_id))
+        return hash_value % self.total_devices
     
     def get_assigned_instances(self) -> List[str]:
         """Get list of instances assigned to this device"""

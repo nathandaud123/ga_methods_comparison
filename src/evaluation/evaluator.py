@@ -6,13 +6,14 @@ Supports both sequential and parallel execution
 import numpy as np
 import pandas as pd
 import os
+import sys
+import time
 from typing import List, Dict, Tuple, Optional
 from ..ga.genetic_algorithm import GeneticAlgorithm, GAConfig, GAResult
 from ..data.solomon_parser import VRPInstance
 from .metrics import ExperimentMetrics, ComparisonMetrics, MetricsCalculator
 from .checkpoint import CheckpointManager
 from .parallel_executor import ParallelExperimentExecutor
-import time
 
 
 class ExperimentEvaluator:
@@ -54,10 +55,13 @@ class ExperimentEvaluator:
         Returns:
             List of experiment metrics for each run
         """
-        # Use parallel execution if enabled
         if self.parallel and self.parallel_executor:
+            print(f"  Using parallel execution mode...")
+            sys.stdout.flush()
             return self._run_experiment_parallel(config, method_name)
         else:
+            print(f"  Using sequential execution mode ({self.n_runs} runs)...")
+            sys.stdout.flush()
             return self._run_experiment_sequential(config, method_name)
     
     def _run_experiment_parallel(self, config: GAConfig, method_name: str) -> List[ExperimentMetrics]:
@@ -105,6 +109,7 @@ class ExperimentEvaluator:
                 continue
             
             print(f"Run {run_key}/{self.n_runs}...")
+            sys.stdout.flush()
             
             try:
                 # Run GA
@@ -243,6 +248,7 @@ class ExperimentEvaluator:
             print(f"\n{'='*60}")
             print(f"Evaluating method: {method_name}")
             print(f"{'='*60}")
+            sys.stdout.flush()
             
             experiment_results = self.run_experiment(config, method_name=method_name)
             

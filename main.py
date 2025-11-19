@@ -226,10 +226,10 @@ def run_comparison_study(config: dict):
         parser = SolomonParser()
         instance = parser.parse(instance_path)
         
-        # Check if instance is already complete
+        # Check if instance is already complete (from any device)
         if checkpoint_manager.is_instance_complete(instance.name):
             print(f"\n{'='*80}")
-            print(f"Skipping instance: {instance.name} (already completed)")
+            print(f"Skipping instance: {instance.name} (already completed by another device)")
             print(f"{'='*80}")
             # Load existing results instead of recomputing
             results_file = os.path.join(
@@ -243,6 +243,15 @@ def run_comparison_study(config: dict):
                     # Convert back to ComparisonMetrics (simplified)
                     all_results[instance.name] = results_dict
             continue
+        
+        # Additional safety: Check if this instance is assigned to this device
+        if task_distributor:
+            assigned_instances = task_distributor.get_assigned_instances()
+            if instance.name not in assigned_instances:
+                print(f"\n{'='*80}")
+                print(f"Skipping instance: {instance.name} (not assigned to this device)")
+                print(f"{'='*80}")
+                continue
         
         print(f"\n{'='*80}")
         print(f"Processing instance: {instance_file_name}")

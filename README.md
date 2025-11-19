@@ -70,6 +70,7 @@ python main.py --config config.yaml
 See `PARALLEL_USAGE.md` for single-device guide.
 See `MULTI_DEVICE_SETUP.md` for multi-device guide.
 See `SETUP_2_DEVICES.md` for quick setup (Laptop + AI Center).
+See `QUICK_ANSWER.md` for quick answer: "Apakah aman run bersamaan?"
 
 ## ✅ Checkpoint & Resume Feature
 

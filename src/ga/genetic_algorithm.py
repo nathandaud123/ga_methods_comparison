@@ -273,11 +273,8 @@ class GeneticAlgorithm:
             diversity = self.calculate_diversity(population)
             self.diversity_history.append(diversity)
             
-            # Early stopping (optional)
-            if no_improvement > 100:
-                if self.config.verbose:
-                    print(f"Early stopping at generation {generation}")
-                break
+            # Early stopping disabled - always run to max_generations
+            # (Removed to ensure consistent comparison across all methods)
             
             # Progress output
             if self.config.verbose and (generation + 1) % 50 == 0:

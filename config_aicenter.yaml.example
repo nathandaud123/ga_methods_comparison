@@ -20,9 +20,9 @@ evaluation:
   save_routes: true
   save_convergence_history: true
   parallel: true  # Gunakan SEMUA core AI Center
-  n_jobs: null    # Auto-detect (akan pakai semua core yang tersedia)
-  # Atau set manual jika tahu jumlah core:
-  # n_jobs: 64  # Contoh: jika AI Center punya 64 cores
+  n_jobs: 250     # Set manual: 256 cores - 6 cores untuk OS/system (leave some free)
+  # Atau gunakan null untuk auto-detect, tapi lebih baik set manual untuk optimal
+  # n_jobs: null  # Auto-detect (akan pakai CPU_COUNT - 1)
 
 # ... rest sama dengan config.yaml ...
 
