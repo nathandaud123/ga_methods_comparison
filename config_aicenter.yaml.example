@@ -6,6 +6,13 @@ device:
   device_id: "aicenter"  # Unique ID untuk AI Center
   total_devices: 2       # Total: Laptop + AI Center
 
+# Optuna Tuning Configuration - IMPORTANT: Tuning runs FIRST before experiments
+optuna:
+  enabled: true  # ALWAYS enabled - tuning runs FIRST before experiments
+  n_trials: 50
+  timeout: 3600  # seconds
+  save_history: true  # Save all trial results to CSV
+
 # Evaluation Configuration
 evaluation:
   metrics:
@@ -25,5 +32,5 @@ evaluation:
   # Dengan parallel_methods: true, semua tasks (methods × runs) dieksekusi dalam satu pool
   # Jadi bisa 60 tasks sekaligus (mix methods dan runs) - sangat efisien untuk AI Center!
 
-# ... rest sama dengan config.yaml ...
+# ... rest sama dengan config.yaml (dataset, ga, representations, selection_methods, crossover_methods, mutation_methods, output) ...
 
