@@ -29,6 +29,124 @@ def load_config(config_path: str) -> dict:
     return config
 
 
+def generate_results_from_checkpoint(checkpoint_manager: CheckpointManager, 
+                                     instance_name: str, 
+                                     results_dir: str) -> Dict:
+    """
+    Generate results JSON file from checkpoint data
+    
+    Args:
+        checkpoint_manager: Checkpoint manager instance
+        instance_name: Name of the instance
+        results_dir: Directory to save results file
+        
+    Returns:
+        Dictionary of method results, or empty dict if no data
+    """
+    results_dict = {}
+    
+    # Get completed methods for this instance
+    completed_methods = checkpoint_manager.state.get('completed_methods', {}).get(instance_name, [])
+    if not completed_methods:
+        return results_dict
+    
+    # Get partial progress data
+    partial_progress = checkpoint_manager.state.get('partial_progress', {}).get(instance_name, {})
+    
+    for method_name in completed_methods:
+        method_progress = partial_progress.get(method_name, {})
+        
+        # Check if we have run data (not just summary)
+        run_data = {}
+        if isinstance(method_progress, dict):
+            # Check if it's summary format or run data format
+            if 'status' in method_progress and method_progress['status'] == 'complete':
+                # This is summary format - load from convergence CSV files
+                run_data = None  # Will trigger convergence file loading
+            else:
+                # This is run data format - extract metrics
+                for run_key, run_result in method_progress.items():
+                    if run_key.isdigit():
+                        run_data[int(run_key)] = run_result
+        
+        # If no run data, try to load from convergence CSV files
+        if not run_data:
+            # Find convergence directory (sibling of experiments directory)
+            # results_dir is like: results/experiments/C101
+            # convergence_dir should be: results/convergence/C101
+            if 'experiments' in results_dir:
+                convergence_dir = results_dir.replace('experiments', 'convergence')
+            else:
+                # Fallback: assume results_dir is base, go up one level
+                convergence_dir = os.path.join(os.path.dirname(results_dir), 'convergence', instance_name)
+            convergence_file = os.path.join(
+                convergence_dir,
+                f"{method_name}_convergence.csv"
+            )
+            if os.path.exists(convergence_file):
+                try:
+                    import pandas as pd
+                    df = pd.read_csv(convergence_file)
+                    # Extract final fitness for each run (last row)
+                    if len(df) > 0:
+                        last_row = df.iloc[-1]
+                        # Get fitness for each run
+                        fitness_cols = [col for col in df.columns if col.startswith('fitness_run_')]
+                        if fitness_cols:
+                            fitnesses = [last_row[col] for col in fitness_cols if col in last_row]
+                            # Get diversity for each run
+                            diversity_cols = [col for col in df.columns if col.startswith('diversity_run_')]
+                            diversities = [last_row[col] for col in diversity_cols if col in last_row] if diversity_cols else []
+                            
+                            if fitnesses:
+                                # Use fitness_min as best, fitness_max as worst
+                                best_fitness = last_row.get('fitness_min', min(fitnesses))
+                                worst_fitness = last_row.get('fitness_max', max(fitnesses))
+                                
+                                results_dict[method_name] = {
+                                    'mean_fitness': float(np.mean(fitnesses)),
+                                    'std_fitness': float(np.std(fitnesses)),
+                                    'mean_runtime': 0.0,  # Not available in convergence file
+                                    'std_runtime': 0.0,
+                                    'best_fitness': float(best_fitness),
+                                    'worst_fitness': float(worst_fitness),
+                                }
+                except Exception as e:
+                    print(f"  Warning: Could not load convergence file {convergence_file}: {e}")
+            continue
+        
+        # Aggregate metrics from run data
+        fitnesses = []
+        runtimes = []
+        convergences = []
+        diversities = []
+        
+        for run_num, run_result in sorted(run_data.items()):
+            if isinstance(run_result, dict):
+                fitnesses.append(run_result.get('fitness', 0.0))
+                runtimes.append(run_result.get('runtime', 0.0))
+                convergences.append(run_result.get('convergence_generation', 0))
+                diversities.append(run_result.get('diversity', 0.0))
+        
+        if fitnesses:
+            results_dict[method_name] = {
+                'mean_fitness': float(np.mean(fitnesses)),
+                'std_fitness': float(np.std(fitnesses)),
+                'mean_runtime': float(np.mean(runtimes)),
+                'std_runtime': float(np.std(runtimes)),
+                'best_fitness': float(np.min(fitnesses)),
+                'worst_fitness': float(np.max(fitnesses)),
+            }
+    
+    # Save results file if we have data
+    if results_dict:
+        results_file = os.path.join(results_dir, f"{instance_name}_results.json")
+        with open(results_file, 'w') as f:
+            json.dump(results_dict, f, indent=2)
+    
+    return results_dict
+
+
 def create_output_dirs(config: dict):
     """Create output directories"""
     output_config = config.get('output', {})
@@ -229,19 +347,89 @@ def run_comparison_study(config: dict):
         # Check if instance is already complete (from any device)
         if checkpoint_manager.is_instance_complete(instance.name):
             print(f"\n{'='*80}")
-            print(f"Skipping instance: {instance.name} (already completed by another device)")
+            print(f"Skipping instance: {instance.name} (already completed)")
             print(f"{'='*80}")
-            # Load existing results instead of recomputing
-            results_file = os.path.join(
-                output_config.get('experiments_dir', 'results/experiments'),
-                instance.name,
-                f"{instance.name}_results.json"
-            )
+            
+            # Setup directories for this instance
+            instance_results_dir = os.path.join(output_config.get('experiments_dir', 'results/experiments'), instance.name)
+            instance_plots_dir = os.path.join(output_config.get('plots_dir', 'results/plots'), instance.name)
+            instance_routes_dir = os.path.join(output_config.get('routes_dir', 'results/routes'), instance.name)
+            instance_convergence_dir = os.path.join(output_config.get('convergence_dir', 'results/convergence'), instance.name)
+            
+            os.makedirs(instance_results_dir, exist_ok=True)
+            os.makedirs(instance_plots_dir, exist_ok=True)
+            os.makedirs(instance_routes_dir, exist_ok=True)
+            os.makedirs(instance_convergence_dir, exist_ok=True)
+            
+            results_file = os.path.join(instance_results_dir, f"{instance.name}_results.json")
+            
+            # Try to load existing results
             if os.path.exists(results_file):
                 with open(results_file, 'r') as f:
                     results_dict = json.load(f)
-                    # Convert back to ComparisonMetrics (simplified)
                     all_results[instance.name] = results_dict
+                    print(f"  Loaded existing results from {results_file}")
+            else:
+                # Generate results from checkpoint
+                print(f"  Generating results from checkpoint...")
+                results_dict = generate_results_from_checkpoint(
+                    checkpoint_manager, instance.name, instance_results_dir
+                )
+                if results_dict:
+                    all_results[instance.name] = results_dict
+                    print(f"  Generated results for {len(results_dict)} methods")
+                else:
+                    print(f"  Warning: Could not generate results from checkpoint")
+            
+            # Generate plots and routes if missing
+            if results_dict and config.get('evaluation', {}).get('save_plots', True):
+                # Check if plots exist
+                plot_files = [
+                    os.path.join(instance_plots_dir, f"{instance.name}_fitness_comparison.png"),
+                    os.path.join(instance_plots_dir, f"{instance.name}_runtime_comparison.png"),
+                    os.path.join(instance_plots_dir, f"{instance.name}_heatmap.png"),
+                ]
+                if not all(os.path.exists(f) for f in plot_files):
+                    print(f"  Generating missing plots...")
+                    # Convert results_dict to ComparisonMetrics for plotting
+                    comparison_results = {}
+                    for method_name, metrics_dict in results_dict.items():
+                        from src.evaluation.metrics import ComparisonMetrics
+                        comparison_results[method_name] = ComparisonMetrics(
+                            method_name=method_name,
+                            mean_fitness=metrics_dict.get('mean_fitness', 0.0),
+                            std_fitness=metrics_dict.get('std_fitness', 0.0),
+                            mean_runtime=metrics_dict.get('mean_runtime', 0.0),
+                            std_runtime=metrics_dict.get('std_runtime', 0.0),
+                            best_fitness=metrics_dict.get('best_fitness', 0.0),
+                            worst_fitness=metrics_dict.get('worst_fitness', 0.0),
+                            mean_convergence=0.0,
+                            std_convergence=0.0,
+                            mean_diversity=0.0,
+                            std_diversity=0.0,
+                            success_rate=1.0
+                        )
+                    
+                    plotter = ResultPlotter()
+                    plotter.plot_comparison_bar(
+                        comparison_results,
+                        metric='mean_fitness',
+                        save_path=plot_files[0],
+                        show=False
+                    )
+                    plotter.plot_comparison_bar(
+                        comparison_results,
+                        metric='mean_runtime',
+                        save_path=plot_files[1],
+                        show=False
+                    )
+                    plotter.plot_comparison_heatmap(
+                        comparison_results,
+                        save_path=plot_files[2],
+                        show=False
+                    )
+                    print(f"  Plots generated")
+            
             continue
         
         # Additional safety: Check if this instance is assigned to this device
