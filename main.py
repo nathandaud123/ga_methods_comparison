@@ -567,6 +567,19 @@ def run_comparison_study(config: dict):
                 # Don't mark as complete here - let it be marked when methods are actually verified
         
         # Save results (update with any new data)
+        # If no new results and no existing results, but methods are complete in checkpoint,
+        # generate results from checkpoint/convergence files
+        if not comparison_results and not existing_results:
+            completed_methods = checkpoint_manager.state.get('completed_methods', {}).get(instance.name, [])
+            if completed_methods:
+                print(f"\nAll methods already complete in checkpoint. Generating results from checkpoint/convergence files...")
+                generated_results = generate_results_from_checkpoint(
+                    checkpoint_manager, instance.name, instance_results_dir
+                )
+                if generated_results:
+                    existing_results = generated_results
+                    print(f"  Generated results for {len(generated_results)} methods from checkpoint/convergence files")
+        
         if comparison_results or existing_results:
             # Merge results
             results_dict = existing_results.copy() if existing_results else {}
@@ -588,32 +601,65 @@ def run_comparison_study(config: dict):
             print(f"\nResults saved to {results_file} ({len(results_dict)} methods)")
         
         # Visualizations (only if we have results)
-        if config.get('evaluation', {}).get('save_plots', True) and comparison_results:
+        # Use comparison_results if available, otherwise use existing_results
+        results_for_plotting = comparison_results if comparison_results else None
+        if not results_for_plotting and existing_results:
+            # Convert existing_results to ComparisonMetrics for plotting
+            from src.evaluation.metrics import ComparisonMetrics
+            results_for_plotting = {}
+            for method_name, metrics_dict in existing_results.items():
+                results_for_plotting[method_name] = ComparisonMetrics(
+                    method_name=method_name,
+                    mean_fitness=metrics_dict.get('mean_fitness', 0.0),
+                    std_fitness=metrics_dict.get('std_fitness', 0.0),
+                    mean_runtime=metrics_dict.get('mean_runtime', 0.0),
+                    std_runtime=metrics_dict.get('std_runtime', 0.0),
+                    best_fitness=metrics_dict.get('best_fitness', 0.0),
+                    worst_fitness=metrics_dict.get('worst_fitness', 0.0),
+                    mean_convergence=0.0,
+                    std_convergence=0.0,
+                    mean_diversity=0.0,
+                    std_diversity=0.0,
+                    success_rate=1.0
+                )
+        
+        if config.get('evaluation', {}).get('save_plots', True) and results_for_plotting:
             plotter = ResultPlotter()
             
-            # Comparison bar chart
-            plotter.plot_comparison_bar(
-                comparison_results,
-                metric='mean_fitness',
-                save_path=os.path.join(instance_plots_dir, f"{instance.name}_fitness_comparison.png"),
-                show=False
-            )
+            # Check if plots already exist
+            plot_files = [
+                os.path.join(instance_plots_dir, f"{instance.name}_fitness_comparison.png"),
+                os.path.join(instance_plots_dir, f"{instance.name}_runtime_comparison.png"),
+                os.path.join(instance_plots_dir, f"{instance.name}_heatmap.png"),
+            ]
             
-            plotter.plot_comparison_bar(
-                comparison_results,
-                metric='mean_runtime',
-                save_path=os.path.join(instance_plots_dir, f"{instance.name}_runtime_comparison.png"),
-                show=False
-            )
-            
-            # Heatmap
-            plotter.plot_comparison_heatmap(
-                comparison_results,
-                save_path=os.path.join(instance_plots_dir, f"{instance.name}_heatmap.png"),
-                show=False
-            )
+            if not all(os.path.exists(f) for f in plot_files):
+                # Comparison bar chart
+                plotter.plot_comparison_bar(
+                    results_for_plotting,
+                    metric='mean_fitness',
+                    save_path=plot_files[0],
+                    show=False
+                )
+                
+                plotter.plot_comparison_bar(
+                    results_for_plotting,
+                    metric='mean_runtime',
+                    save_path=plot_files[1],
+                    show=False
+                )
+                
+                # Heatmap
+                plotter.plot_comparison_heatmap(
+                    results_for_plotting,
+                    save_path=plot_files[2],
+                    show=False
+                )
+                print(f"  Plots generated: {len([f for f in plot_files if os.path.exists(f)])}/{len(plot_files)}")
+            else:
+                print(f"  Plots already exist, skipping")
         elif config.get('evaluation', {}).get('save_plots', True):
-            print(f"  Skipping plots (no new results to visualize)")
+            print(f"  Skipping plots (no results to visualize)")
         
         # Visualize best route (only if we have results)
         if config.get('evaluation', {}).get('save_routes', True) and comparison_results:
