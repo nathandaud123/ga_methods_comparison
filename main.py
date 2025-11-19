@@ -470,13 +470,26 @@ def run_comparison_study(config: dict):
         os.makedirs(instance_convergence_dir, exist_ok=True)
         os.makedirs(instance_tuning_dir, exist_ok=True)
         
-        # Optuna tuning (if enabled)
+        # Optuna tuning (if enabled) - MUST run BEFORE experiments
         optuna_config = config.get('optuna', {})
+        best_params_global = None  # Store best parameters from tuning
+        
         if optuna_config.get('enabled', False):
-            print("\nRunning Optuna parameter tuning...")
-            # Tune for first method combination as example
+            print("\n" + "="*80)
+            print("STEP 1: OPTUNA PARAMETER TUNING")
+            print("="*80)
+            print("Tuning parameters to find optimal configuration...")
+            
             if method_combinations:
+                # Use first method combination as representative for tuning
+                # (or can tune per method if needed)
                 method_name, base_config = method_combinations[0]
+                print(f"\nTuning for method: {method_name}")
+                print(f"  Representation: {base_config.representation}")
+                print(f"  Selection: {base_config.selection_method}")
+                print(f"  Crossover: {base_config.crossover_method}")
+                print(f"  Mutation: {base_config.mutation_method}")
+                
                 tuner = OptunaTuner(
                     instance,
                     representation=base_config.representation,
@@ -488,15 +501,55 @@ def run_comparison_study(config: dict):
                     save_history=optuna_config.get('save_history', True),
                     history_dir=instance_tuning_dir
                 )
+                
                 tuning_result = tuner.tune(
                     study_name=f"{instance.name}_tuning",
                     instance_name=instance.name
                 )
-                # Update config with best parameters
-                best_config = tuner.get_best_config(tuning_result['best_params'])
-                method_combinations[0] = (method_name, best_config)
+                
+                # Store best parameters to apply to ALL methods
+                best_params_global = tuning_result['best_params']
+                
+                print(f"\n{'='*80}")
+                print("TUNING COMPLETE - Best Parameters Found:")
+                print(f"{'='*80}")
+                for key, value in best_params_global.items():
+                    print(f"  {key}: {value}")
+                print(f"  Best Fitness: {tuning_result['best_value']:.2f}")
+                print(f"{'='*80}\n")
+                
+                # Update ALL method combinations with best parameters
+                print("Applying best parameters to ALL method combinations...")
+                updated_methods = []
+                for method_name, method_config in method_combinations:
+                    # Create new config with best parameters but keep method-specific operators
+                    updated_config = GAConfig(
+                        population_size=best_params_global['population_size'],
+                        max_generations=best_params_global['max_generations'],
+                        crossover_rate=best_params_global['crossover_rate'],
+                        mutation_rate=best_params_global['mutation_rate'],
+                        elitism_rate=best_params_global.get('elitism_rate', method_config.elitism_rate),
+                        tournament_size=best_params_global.get('tournament_size', method_config.tournament_size),
+                        selection_method=method_config.selection_method,  # Keep method-specific
+                        crossover_method=method_config.crossover_method,   # Keep method-specific
+                        mutation_method=method_config.mutation_method,     # Keep method-specific
+                        representation=method_config.representation,      # Keep method-specific
+                        verbose=method_config.verbose
+                    )
+                    updated_methods.append((method_name, updated_config))
+                
+                method_combinations = updated_methods
+                print(f"  Updated {len(method_combinations)} method combinations with best parameters")
+                print(f"{'='*80}\n")
+            else:
+                print("Warning: No method combinations to tune!")
+        else:
+            print("\nOptuna tuning disabled - using default parameters from config")
         
         # Run experiments
+        print("\n" + "="*80)
+        print("STEP 2: RUNNING EXPERIMENTS WITH OPTIMIZED PARAMETERS")
+        print("="*80)
         eval_config = config.get('evaluation', {})
         save_history = eval_config.get('save_convergence_history', True)
         parallel = eval_config.get('parallel', False)
