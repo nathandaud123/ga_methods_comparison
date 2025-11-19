@@ -88,7 +88,7 @@ mutation_methods:
 
 # Optuna Tuning Configuration
 optuna:
-  enabled: false  # Disable for full dataset run (takes too long)
+  enabled: true  # ALWAYS enabled - tuning runs FIRST before experiments
   n_trials: 50
   timeout: 3600  # seconds
   save_history: true  # Save all trial results to CSV

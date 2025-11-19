@@ -597,7 +597,13 @@ def run_comparison_study(config: dict):
             else:
                 print("Warning: No method combinations to tune!")
         else:
-            print("\nOptuna tuning disabled - using default parameters from config")
+            print("\n" + "="*80)
+            print("WARNING: Optuna tuning is DISABLED in config!")
+            print("="*80)
+            print("Tuning is recommended to find optimal parameters for each method.")
+            print("Set optuna.enabled: true in config.yaml to enable tuning.")
+            print("Using default parameters from config (may not be optimal).")
+            print("="*80 + "\n")
         
         # Run experiments
         print("\n" + "="*80)
