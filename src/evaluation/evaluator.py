@@ -295,8 +295,11 @@ class ExperimentEvaluator:
     
     def _compare_methods_parallel(self, configs: List[Tuple[str, GAConfig]]) -> Dict[str, ComparisonMetrics]:
         """
-        Compare multiple methods in parallel using global task pool
-        All tasks (method × run) are executed in one large pool
+        Compare multiple methods in parallel using batched execution
+        - Process methods in batches (e.g., 12 methods at a time)
+        - Each method runs 5 runs in parallel (run numbers 1-5)
+        - Total: 12 methods × 5 runs = 60 workers optimal
+        - Uses global pool but organizes tasks per method to ensure run numbers 1-5
         """
         import multiprocessing as mp
         from .parallel_executor import _run_single_experiment
@@ -319,148 +322,162 @@ class ExperimentEvaluator:
             print("\nAll methods already completed!")
             return comparison_results
         
+        # Calculate batch size: methods per batch
+        # With n_jobs=60 and n_runs=5, we can run 12 methods simultaneously
+        # (12 methods × 5 runs = 60 workers)
+        methods_per_batch = max(1, self.n_jobs // self.n_runs) if self.n_jobs else 12
+        
         print(f"\n{'='*80}")
         print(f"PARALLEL METHODS EXECUTION: {len(pending_configs)} methods")
-        print(f"Using {self.n_jobs} workers for all tasks (methods × runs)")
+        print(f"Batch size: {methods_per_batch} methods per batch")
+        print(f"Each method: {self.n_runs} runs in parallel (run numbers 1-5)")
+        print(f"Total workers per batch: {methods_per_batch * self.n_runs} (max {self.n_jobs})")
         print(f"{'='*80}\n")
         sys.stdout.flush()
         
-        # Prepare all tasks: (method_name, config, run_number)
-        all_tasks = []
-        method_results_map = {}  # Track results per method
-        
         checkpoint_file = getattr(self.checkpoint_manager, 'checkpoint_file', 'results/checkpoint.json') if self.checkpoint_manager else 'results/checkpoint.json'
         
-        for method_name, config in pending_configs:
-            # Check completed runs for this method
-            if self.checkpoint_manager:
-                completed_runs = self.checkpoint_manager.get_completed_runs(instance_name, method_name)
-            else:
-                completed_runs = set()
-            
-            method_results_map[method_name] = []
-            
-            # Prepare instance data for serialization
-            instance_data = {
-                'name': self.instance.name,
-                'num_customers': self.instance.num_customers,
-                'depot': {
-                    'id': self.instance.depot.id,
-                    'x': self.instance.depot.x,
-                    'y': self.instance.depot.y,
-                    'demand': self.instance.depot.demand,
-                    'ready_time': getattr(self.instance.depot, 'ready_time', 0.0),
-                    'due_time': getattr(self.instance.depot, 'due_time', 0.0),
-                    'service_time': getattr(self.instance.depot, 'service_time', 0.0),
-                },
-                'customers': [
-                    {
-                        'id': c.id,
-                        'x': c.x,
-                        'y': c.y,
-                        'demand': c.demand,
-                        'ready_time': getattr(c, 'ready_time', 0.0),
-                        'due_time': getattr(c, 'due_time', 0.0),
-                        'service_time': getattr(c, 'service_time', 0.0),
-                    }
-                    for c in self.instance.customers
-                ],
-                'vehicle_capacity': self.instance.vehicle_capacity,
-                'type': self.instance.type
-            }
-            
-            config_dict = {
-                'representation': config.representation,
-                'selection_method': config.selection_method,
-                'crossover_method': config.crossover_method,
-                'mutation_method': config.mutation_method,
-                'population_size': config.population_size,
-                'max_generations': config.max_generations,
-                'elitism_rate': config.elitism_rate,
-                'crossover_rate': config.crossover_rate,
-                'mutation_rate': config.mutation_rate,
-                'tournament_size': config.tournament_size,
-            }
-            
-            # Add tasks for incomplete runs
-            for run in range(1, self.n_runs + 1):
-                if run not in completed_runs:
-                    all_tasks.append((
-                        instance_data,
-                        config_dict,
-                        method_name,
-                        run,
-                        checkpoint_file
-                    ))
+        # Process methods in batches
+        num_batches = (len(pending_configs) + methods_per_batch - 1) // methods_per_batch
         
-        if not all_tasks:
-            print("All runs already completed!")
-            return comparison_results
-        
-        print(f"Total tasks to execute: {len(all_tasks)} (across {len(pending_configs)} methods)")
-        sys.stdout.flush()
-        
-        # Execute all tasks in parallel
-        completed = 0
-        total = len(all_tasks)
-        last_update = time.time()
-        
-        with mp.Pool(processes=self.n_jobs) as pool:
-            async_results = pool.map_async(_run_single_experiment, all_tasks)
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * methods_per_batch
+            end_idx = min(start_idx + methods_per_batch, len(pending_configs))
+            batch_configs = pending_configs[start_idx:end_idx]
             
-            # Wait with progress updates
-            while not async_results.ready():
-                time.sleep(2)
-                elapsed = time.time() - last_update
-                if elapsed >= 10:
-                    print(f"  ... still running ({total} tasks in progress) ...")
-                    sys.stdout.flush()
-                    last_update = time.time()
-            
-            print(f"  All {total} tasks completed, collecting results...")
+            print(f"\n{'='*80}")
+            print(f"BATCH {batch_idx + 1}/{num_batches}: Processing {len(batch_configs)} methods")
+            print(f"  Methods: {[name for name, _ in batch_configs]}")
+            print(f"{'='*80}\n")
             sys.stdout.flush()
             
-            # Collect results
-            for method_name_result, run_num, metrics, error in async_results.get():
-                if error:
-                    print(f"  Error in {method_name_result} run {run_num}: {error}")
-                    sys.stdout.flush()
-                    continue
-                if metrics:
-                    if method_name_result not in method_results_map:
-                        method_results_map[method_name_result] = []
-                    method_results_map[method_name_result].append(metrics)
-                completed += 1
-                if completed % max(1, total // 10) == 0:
-                    print(f"  Collected {completed}/{total} results...")
-                    sys.stdout.flush()
-        
-        # Aggregate results per method
-        for method_name, results in method_results_map.items():
-            if not results:
-                # Check if method is complete in checkpoint
-                if self.checkpoint_manager and \
-                   self.checkpoint_manager.is_method_complete(instance_name, method_name, self.n_runs):
-                    continue
-                print(f"  Warning: No results for {method_name}, skipping")
+            # Prepare all tasks for this batch: organized per method with run numbers 1-5
+            batch_tasks = []
+            method_results_map = {}
+            
+            for method_name, config in batch_configs:
+                # Check completed runs for this method
+                if self.checkpoint_manager:
+                    completed_runs = self.checkpoint_manager.get_completed_runs(instance_name, method_name)
+                else:
+                    completed_runs = set()
+                
+                method_results_map[method_name] = []
+                
+                # Prepare instance data for serialization (shared across runs of same method)
+                instance_data = {
+                    'name': self.instance.name,
+                    'num_customers': self.instance.num_customers,
+                    'depot': {
+                        'id': self.instance.depot.id,
+                        'x': self.instance.depot.x,
+                        'y': self.instance.depot.y,
+                        'demand': self.instance.depot.demand,
+                        'ready_time': getattr(self.instance.depot, 'ready_time', 0.0),
+                        'due_time': getattr(self.instance.depot, 'due_time', 0.0),
+                        'service_time': getattr(self.instance.depot, 'service_time', 0.0),
+                    },
+                    'customers': [
+                        {
+                            'id': c.id,
+                            'x': c.x,
+                            'y': c.y,
+                            'demand': c.demand,
+                            'ready_time': getattr(c, 'ready_time', 0.0),
+                            'due_time': getattr(c, 'due_time', 0.0),
+                            'service_time': getattr(c, 'service_time', 0.0),
+                        }
+                        for c in self.instance.customers
+                    ],
+                    'vehicle_capacity': self.instance.vehicle_capacity,
+                    'type': self.instance.type
+                }
+                
+                config_dict = {
+                    'representation': config.representation,
+                    'selection_method': config.selection_method,
+                    'crossover_method': config.crossover_method,
+                    'mutation_method': config.mutation_method,
+                    'population_size': config.population_size,
+                    'max_generations': config.max_generations,
+                    'elitism_rate': config.elitism_rate,
+                    'crossover_rate': config.crossover_rate,
+                    'mutation_rate': config.mutation_rate,
+                    'tournament_size': config.tournament_size,
+                }
+                
+                # Add tasks for incomplete runs (run numbers 1-5)
+                for run in range(1, self.n_runs + 1):
+                    if run not in completed_runs:
+                        batch_tasks.append((
+                            instance_data,
+                            config_dict,
+                            method_name,
+                            run,  # Run number 1-5 (sequential per method)
+                            checkpoint_file
+                        ))
+            
+            if not batch_tasks:
+                print("  All runs in this batch already completed!")
                 continue
             
-            aggregated = self.metrics_calc.aggregate_metrics(results)
-            aggregated.method_name = method_name
-            comparison_results[method_name] = aggregated
-            
-            print(f"\nResults for {method_name}:")
-            print(f"  Mean Fitness: {aggregated.mean_fitness:.2f} ± {aggregated.std_fitness:.2f}")
-            print(f"  Mean Runtime: {aggregated.mean_runtime:.2f}s ± {aggregated.std_runtime:.2f}s")
-            print(f"  Best Fitness: {aggregated.best_fitness:.2f}")
+            print(f"  Executing {len(batch_tasks)} tasks ({len(batch_configs)} methods × {self.n_runs} runs)")
             sys.stdout.flush()
             
-            # Save convergence history if enabled
-            if self.save_history and method_name:
-                fitness_histories = []
-                diversity_histories = []
-                # Note: In parallel mode, we don't have full history, so skip this
-                # Convergence history would need to be saved per-run in worker
+            # Execute all tasks in this batch using global pool
+            completed = 0
+            total = len(batch_tasks)
+            last_update = time.time()
+            
+            with mp.Pool(processes=self.n_jobs) as pool:
+                async_results = pool.map_async(_run_single_experiment, batch_tasks)
+                
+                # Wait with progress updates
+                while not async_results.ready():
+                    time.sleep(2)
+                    elapsed = time.time() - last_update
+                    if elapsed >= 10:
+                        print(f"  ... still running ({total} tasks in progress) ...")
+                        sys.stdout.flush()
+                        last_update = time.time()
+                
+                print(f"  All {total} tasks completed, collecting results...")
+                sys.stdout.flush()
+                
+                # Collect results
+                for method_name_result, run_num, metrics, error in async_results.get():
+                    if error:
+                        print(f"  Error in {method_name_result} run {run_num}: {error}")
+                        sys.stdout.flush()
+                        continue
+                    if metrics:
+                        if method_name_result not in method_results_map:
+                            method_results_map[method_name_result] = []
+                        method_results_map[method_name_result].append(metrics)
+                    completed += 1
+                    if completed % max(1, total // 10) == 0:
+                        print(f"  Collected {completed}/{total} results...")
+                        sys.stdout.flush()
+            
+            # Aggregate results per method for this batch
+            for method_name, results in method_results_map.items():
+                if not results:
+                    # Check if method is complete in checkpoint
+                    if self.checkpoint_manager and \
+                       self.checkpoint_manager.is_method_complete(instance_name, method_name, self.n_runs):
+                        continue
+                    print(f"  Warning: No results for {method_name}, skipping")
+                    continue
+                
+                aggregated = self.metrics_calc.aggregate_metrics(results)
+                aggregated.method_name = method_name
+                comparison_results[method_name] = aggregated
+                
+                print(f"\nResults for {method_name}:")
+                print(f"  Mean Fitness: {aggregated.mean_fitness:.2f} ± {aggregated.std_fitness:.2f}")
+                print(f"  Mean Runtime: {aggregated.mean_runtime:.2f}s ± {aggregated.std_runtime:.2f}s")
+                print(f"  Best Fitness: {aggregated.best_fitness:.2f}")
+                sys.stdout.flush()
         
         return comparison_results
     
