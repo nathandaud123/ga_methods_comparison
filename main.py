@@ -313,6 +313,7 @@ def run_comparison_study(config: dict):
         save_history = eval_config.get('save_convergence_history', True)
         parallel = eval_config.get('parallel', False)
         n_jobs = eval_config.get('n_jobs', None)
+        parallel_methods = eval_config.get('parallel_methods', False)  # Enable parallel methods execution
         
         evaluator = ExperimentEvaluator(
             instance,
@@ -321,7 +322,8 @@ def run_comparison_study(config: dict):
             history_dir=instance_convergence_dir,
             checkpoint_manager=checkpoint_manager,
             parallel=parallel,
-            n_jobs=n_jobs
+            n_jobs=n_jobs,
+            parallel_methods=parallel_methods
         )
         
         comparison_results = evaluator.compare_methods(method_combinations)

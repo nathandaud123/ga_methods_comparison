@@ -127,6 +127,10 @@ evaluation:
   save_convergence_history: true  # Save convergence history to CSV for each method
   parallel: true  # Enable parallel execution
   n_jobs: null  # Number of parallel workers (null = auto: CPU_COUNT - 1)
+  parallel_methods: false  # Enable parallel execution for multiple methods (recommended for HPC/AI Center)
+  # With parallel_methods: true, all tasks (methods × runs) execute in one global pool
+  # Example: 60 workers can run 60 tasks simultaneously (mix of methods and runs)
+  # Recommended for AI Center/HPC with many cores (e.g., 60-250 workers)
 
 # Output Configuration
 output:

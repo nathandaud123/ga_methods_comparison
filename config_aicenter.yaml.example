@@ -19,10 +19,11 @@ evaluation:
   save_plots: true
   save_routes: true
   save_convergence_history: true
-  parallel: true  # Gunakan SEMUA core AI Center
-  n_jobs: 250     # Set manual: 256 cores - 6 cores untuk OS/system (leave some free)
-  # Atau gunakan null untuk auto-detect, tapi lebih baik set manual untuk optimal
-  # n_jobs: null  # Auto-detect (akan pakai CPU_COUNT - 1)
+  parallel: true  # Enable parallel execution
+  n_jobs: 60      # 60 workers untuk AI Center (256 cores, leave some for OS)
+  parallel_methods: true  # Enable parallel execution untuk multiple methods
+  # Dengan parallel_methods: true, semua tasks (methods × runs) dieksekusi dalam satu pool
+  # Jadi bisa 60 tasks sekaligus (mix methods dan runs) - sangat efisien untuk AI Center!
 
 # ... rest sama dengan config.yaml ...
 
