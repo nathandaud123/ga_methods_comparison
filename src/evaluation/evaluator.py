@@ -8,6 +8,8 @@ import pandas as pd
 import os
 import sys
 import time
+import hashlib
+import random
 from typing import List, Dict, Tuple, Optional
 from ..ga.genetic_algorithm import GeneticAlgorithm, GAConfig, GAResult
 from ..data.solomon_parser import VRPInstance
@@ -113,6 +115,12 @@ class ExperimentEvaluator:
             sys.stdout.flush()
             
             try:
+                # Set unique random seed for this run to ensure different results
+                seed_string = f"{self.instance.name}_{method_name}_{run_key}"
+                seed = int(hashlib.md5(seed_string.encode()).hexdigest()[:8], 16) % (2**31)
+                np.random.seed(seed)
+                random.seed(seed)
+                
                 # Run GA
                 ga = GeneticAlgorithm(self.instance, config)
                 result = ga.run()

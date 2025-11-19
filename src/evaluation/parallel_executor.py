@@ -8,6 +8,8 @@ import sys
 import time
 import uuid
 import shutil
+import hashlib
+import random
 import multiprocessing as mp
 from multiprocessing import Lock, Manager
 from pathlib import Path
@@ -388,6 +390,13 @@ def _run_single_experiment(args: Tuple) -> Tuple[str, int, Optional[ExperimentMe
         completed_runs = checkpoint_mgr.get_completed_runs(instance_name, method_name)
         if run_number in completed_runs:
             return (method_name, run_number, None, None)  # Already done
+        
+        # Set unique random seed for this run to ensure different results
+        # Use hash of (instance_name, method_name, run_number) for reproducibility
+        seed_string = f"{instance_name}_{method_name}_{run_number}"
+        seed = int(hashlib.md5(seed_string.encode()).hexdigest()[:8], 16) % (2**31)
+        np.random.seed(seed)
+        random.seed(seed)
         
         # Run GA
         ga = GeneticAlgorithm(instance, config)
