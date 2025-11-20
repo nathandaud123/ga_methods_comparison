@@ -33,11 +33,11 @@ class ResultPlotter:
             generations = range(1, len(history) + 1)
             ax.plot(generations, history, label=method_name, linewidth=2)
         
-        ax.set_xlabel('Generation')
-        ax.set_ylabel('Best Fitness')
+        ax.set_xlabel('Generation', fontweight='bold')
+        ax.set_ylabel('Best Fitness', fontweight='bold')
         ax.set_title('Convergence Comparison')
         ax.legend()
-        ax.grid(True, alpha=0.3)
+        ax.grid(False)
         
         plt.tight_layout()
         
@@ -85,12 +85,12 @@ class ResultPlotter:
         x_pos = np.arange(len(method_names))
         bars = ax.bar(x_pos, values, yerr=errors, capsize=5, alpha=0.7)
         
-        ax.set_xlabel('Method')
-        ax.set_ylabel(metric.replace('_', ' ').title())
+        ax.set_xlabel('Method', fontweight='bold')
+        ax.set_ylabel(metric.replace('_', ' ').title(), fontweight='bold')
         ax.set_title(f'Comparison: {metric.replace("_", " ").title()}')
         ax.set_xticks(x_pos)
         ax.set_xticklabels(method_names, rotation=45, ha='right')
-        ax.grid(True, alpha=0.3, axis='y')
+        ax.grid(False)
         
         # Add value labels on bars
         for i, (bar, val) in enumerate(zip(bars, values)):
@@ -141,8 +141,8 @@ class ResultPlotter:
         fig, ax = plt.subplots(figsize=(10, 8))
         sns.heatmap(df, annot=True, fmt='.3f', cmap='YlOrRd', ax=ax, cbar_kws={'label': 'Normalized Value'})
         ax.set_title('Method Comparison Heatmap')
-        ax.set_xlabel('Metrics')
-        ax.set_ylabel('Methods')
+        ax.set_xlabel('Metrics', fontweight='bold')
+        ax.set_ylabel('Methods', fontweight='bold')
         
         plt.tight_layout()
         
@@ -179,9 +179,10 @@ class ResultPlotter:
         for patch, color in zip(bp['boxes'], colors):
             patch.set_facecolor(color)
         
-        ax.set_ylabel(metric_name)
+        ax.set_ylabel(metric_name, fontweight='bold')
+        ax.set_xlabel('Method', fontweight='bold')
         ax.set_title(f'{metric_name} Distribution Comparison')
-        ax.grid(True, alpha=0.3, axis='y')
+        ax.grid(False)
         
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()

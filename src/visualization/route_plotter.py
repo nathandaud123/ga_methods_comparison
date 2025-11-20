@@ -64,11 +64,11 @@ class RoutePlotter:
             ax.plot(route_x, route_y, color=color, linewidth=2, 
                    alpha=0.6, label=f'Route {route_idx + 1}')
         
-        ax.set_xlabel('X Coordinate')
-        ax.set_ylabel('Y Coordinate')
+        ax.set_xlabel('X Coordinate', fontweight='bold')
+        ax.set_ylabel('Y Coordinate', fontweight='bold')
         ax.set_title(title)
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        ax.grid(True, alpha=0.3)
+        ax.grid(False)
         
         plt.tight_layout()
         

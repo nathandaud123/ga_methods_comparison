@@ -95,6 +95,67 @@ class SolomonParser:
         """Parse CSV format Solomon instance"""
         df = pd.read_csv(file_path)
         
+        # Normalize column names: strip whitespace, convert to uppercase, handle variations
+        # Map common variations to expected column names
+        column_mapping = {}
+        expected_columns = {
+            'CUST NO.': ['CUST NO.', 'CUST_NO', 'CUSTNO', 'CUSTOMER NO', 'CUSTOMER_NO', 'ID'],
+            'XCOORD.': ['XCOORD.', 'XCOORD', 'X', 'X_COORD', 'X_COORDINATE'],
+            'YCOORD.': ['YCOORD.', 'YCOORD', 'Y', 'Y_COORD', 'Y_COORDINATE'],
+            'DEMAND': ['DEMAND', 'DEM'],
+            'READY TIME': ['READY TIME', 'READY_TIME', 'READYTIME', 'READY', 'READY_TIME_WINDOW'],
+            'DUE DATE': ['DUE DATE', 'DUE_DATE', 'DUEDATE', 'DUE', 'DUE_TIME', 'DUE_TIME_WINDOW'],
+            'SERVICE TIME': ['SERVICE TIME', 'SERVICE_TIME', 'SERVICETIME', 'SERVICE', 'SERVICE_TIME_WINDOW']
+        }
+        
+        # Create normalized column mapping
+        df_columns_upper = {col.upper().strip(): col for col in df.columns}
+        
+        for expected_col, variations in expected_columns.items():
+            for variation in variations:
+                var_upper = variation.upper().strip()
+                if var_upper in df_columns_upper:
+                    column_mapping[df_columns_upper[var_upper]] = expected_col
+                    break
+        
+        # If mapping is incomplete, try to match by partial name
+        if len(column_mapping) < len(expected_columns):
+            for col in df.columns:
+                col_upper = col.upper().strip()
+                if col not in column_mapping:
+                    # Try partial matching
+                    if 'CUST' in col_upper or 'ID' in col_upper:
+                        if 'CUST NO.' not in column_mapping.values():
+                            column_mapping[col] = 'CUST NO.'
+                    elif 'XCOORD' in col_upper or (col_upper.startswith('X') and 'COORD' in col_upper):
+                        if 'XCOORD.' not in column_mapping.values():
+                            column_mapping[col] = 'XCOORD.'
+                    elif 'YCOORD' in col_upper or (col_upper.startswith('Y') and 'COORD' in col_upper):
+                        if 'YCOORD.' not in column_mapping.values():
+                            column_mapping[col] = 'YCOORD.'
+                    elif 'DEMAND' in col_upper:
+                        if 'DEMAND' not in column_mapping.values():
+                            column_mapping[col] = 'DEMAND'
+                    elif 'READY' in col_upper and 'TIME' in col_upper:
+                        if 'READY TIME' not in column_mapping.values():
+                            column_mapping[col] = 'READY TIME'
+                    elif 'DUE' in col_upper and ('DATE' in col_upper or 'TIME' in col_upper):
+                        if 'DUE DATE' not in column_mapping.values():
+                            column_mapping[col] = 'DUE DATE'
+                    elif 'SERVICE' in col_upper and 'TIME' in col_upper:
+                        if 'SERVICE TIME' not in column_mapping.values():
+                            column_mapping[col] = 'SERVICE TIME'
+        
+        # Rename columns to expected names
+        if column_mapping:
+            df = df.rename(columns=column_mapping)
+        
+        # Verify required columns exist
+        required_cols = ['CUST NO.', 'XCOORD.', 'YCOORD.', 'DEMAND', 'READY TIME', 'DUE DATE', 'SERVICE TIME']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns in CSV: {missing_cols}. Found columns: {list(df.columns)}")
+        
         # Find depot (id=0 or first row with demand=0)
         depot_row = df[df['DEMAND'] == 0].iloc[0] if len(df[df['DEMAND'] == 0]) > 0 else df.iloc[0]
         depot = Customer(

@@ -1,0 +1,147 @@
+# Genetic Algorithm Comparison Study Configuration - LAPTOP
+# Config ini untuk laptop dengan sequential tuning dan parallel runs per method
+
+# Multi-Device Configuration
+device:
+  device_id: "laptop"  # Unique ID untuk laptop
+  total_devices: 2     # Total: Laptop + AI Center
+  # Jika device_id set dan total_devices > 1, setiap device akan kerja di instances berbeda
+  # Distribution: instances di-assign menggunakan modulo (device 1 gets 0, N, 2N...; device 2 gets 1, N+1...)
+
+# Dataset Configuration
+dataset:
+  base_path: "data/solomon"
+  # Instances can be specified as:
+  # - Simple names (will auto-search in subfolders): "C101", "R101"
+  # - Full paths: "C1/C101.csv", "R1/R101.csv"
+  # - Empty list [] will auto-discover ALL CSV files from subfolders
+  instances: []  # Empty = auto-discover all datasets from subfolders
+  # Or specify specific instances:
+  # instances:
+  #   - "C101"
+  #   - "R101"
+  #   - "RC101"
+  types:
+    - "C"  # Clustered
+    - "R"  # Random
+    - "RC" # Random-Clustered
+
+# GA Parameters (default - akan di-override oleh Optuna tuning)
+ga:
+  population_size: 100
+  max_generations: 500
+  elitism_rate: 0.1
+  crossover_rate: 0.8
+  mutation_rate: 0.1
+  tournament_size: 3
+
+# Representations to test
+representations:
+  - "permutation"  # Primary for VRP
+  - "binary"
+  - "real_valued"
+
+# Selection methods to test
+selection_methods:
+  - "roulette_wheel"
+  - "tournament"
+  - "rank"
+  - "stochastic_universal"
+  - "elitism"
+  - "boltzmann"
+
+# Crossover methods (will be filtered by representation)
+crossover_methods:
+  permutation:
+    - "pmx"
+    - "ox"
+    - "cx"
+    - "obx"
+    - "pos"
+    - "erx"
+    - "scx"
+  binary:
+    - "single_point"
+    - "two_point"
+    - "multi_point"
+    - "uniform"
+    - "shuffle"
+  real_valued:
+    - "sbx"
+    - "blx_alpha"
+    - "flat"
+
+# Mutation methods (will be filtered by representation)
+mutation_methods:
+  permutation:
+    - "swap"
+    - "insert"
+    - "inversion"
+    - "scramble"
+    - "displacement"
+  binary:
+    - "bit_flip"
+    - "uniform"
+    - "interchanging"
+  real_valued:
+    - "gaussian"
+    - "polynomial"
+    - "uniform"
+
+# Optuna Tuning Configuration - IMPORTANT: Tuning runs FIRST before experiments
+optuna:
+  enabled: true  # ALWAYS enabled - tuning runs FIRST before experiments
+  n_trials: 50   # 50 trials per method untuk akurasi optimal (SAMA dengan AI Center)
+  timeout: 3600  # seconds
+  save_history: true  # Save all trial results to CSV
+  parallel_tuning: false  # Sequential tuning (satu method per satu) untuk laptop
+  direction: "minimize"
+  study_name: "ga_comparison"
+  parameters:
+    population_size:
+      type: "int"
+      low: 50
+      high: 200
+    crossover_rate:
+      type: "float"
+      low: 0.6
+      high: 0.95
+    mutation_rate:
+      type: "float"
+      low: 0.05
+      high: 0.3
+    tournament_size:
+      type: "int"
+      low: 2
+      high: 10
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    - "fitness"
+    - "runtime"
+    - "convergence"
+    - "diversity"
+    - "solution_quality"
+  n_runs: 5  # 5 runs per method untuk statistik yang baik (SAMA dengan AI Center)
+  save_results: true
+  save_plots: true
+  save_routes: true
+  save_convergence_history: true
+  parallel: true  # Enable parallel execution
+  n_jobs: null  # Auto: CPU_COUNT - 1 (untuk laptop)
+  parallel_methods: false  # Sequential methods (satu method per satu, tapi runs parallel)
+  # Dengan parallel_methods: false, setiap method dijalankan sequential
+  # Tapi runs dalam satu method dijalankan parallel
+
+# Output Configuration
+output:
+  results_dir: "results"
+  experiments_dir: "results/experiments"
+  plots_dir: "results/plots"
+  routes_dir: "results/routes"
+  convergence_dir: "results/convergence"  # Directory for CSV convergence history
+  tuning_dir: "results/tuning"  # Directory for Optuna tuning results CSV
+  checkpoint_file: "results/checkpoint.json"  # Checkpoint file for resuming
+  verbose: true
+
