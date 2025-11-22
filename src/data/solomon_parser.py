@@ -95,6 +95,9 @@ class SolomonParser:
         """Parse CSV format Solomon instance"""
         df = pd.read_csv(file_path)
         
+        # Debug: Print original columns
+        original_columns = list(df.columns)
+        
         # Normalize column names: strip whitespace, convert to uppercase, handle variations
         # Map common variations to expected column names
         column_mapping = {}
@@ -108,7 +111,7 @@ class SolomonParser:
             'SERVICE TIME': ['SERVICE TIME', 'SERVICE_TIME', 'SERVICETIME', 'SERVICE', 'SERVICE_TIME_WINDOW']
         }
         
-        # Create normalized column mapping
+        # Create normalized column mapping (handle whitespace and case)
         df_columns_upper = {col.upper().strip(): col for col in df.columns}
         
         for expected_col, variations in expected_columns.items():
@@ -124,13 +127,13 @@ class SolomonParser:
                 col_upper = col.upper().strip()
                 if col not in column_mapping:
                     # Try partial matching
-                    if 'CUST' in col_upper or 'ID' in col_upper:
+                    if 'CUST' in col_upper or (col_upper == 'ID' or col_upper.startswith('ID')):
                         if 'CUST NO.' not in column_mapping.values():
                             column_mapping[col] = 'CUST NO.'
-                    elif 'XCOORD' in col_upper or (col_upper.startswith('X') and 'COORD' in col_upper):
+                    elif 'XCOORD' in col_upper or (col_upper.startswith('X') and 'COORD' in col_upper) or col_upper == 'X':
                         if 'XCOORD.' not in column_mapping.values():
                             column_mapping[col] = 'XCOORD.'
-                    elif 'YCOORD' in col_upper or (col_upper.startswith('Y') and 'COORD' in col_upper):
+                    elif 'YCOORD' in col_upper or (col_upper.startswith('Y') and 'COORD' in col_upper) or col_upper == 'Y':
                         if 'YCOORD.' not in column_mapping.values():
                             column_mapping[col] = 'YCOORD.'
                     elif 'DEMAND' in col_upper:
@@ -150,42 +153,101 @@ class SolomonParser:
         if column_mapping:
             df = df.rename(columns=column_mapping)
         
-        # Verify required columns exist
+        # Verify required columns exist after rename
         required_cols = ['CUST NO.', 'XCOORD.', 'YCOORD.', 'DEMAND', 'READY TIME', 'DUE DATE', 'SERVICE TIME']
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
-            raise ValueError(f"Missing required columns in CSV: {missing_cols}. Found columns: {list(df.columns)}")
+            error_msg = (
+                f"Error parsing CSV file: {file_path}\n"
+                f"Missing required columns: {missing_cols}\n"
+                f"Original columns in file: {original_columns}\n"
+                f"Columns after mapping: {list(df.columns)}\n"
+                f"Column mapping used: {column_mapping}\n"
+                f"Please check if the CSV file has the correct format."
+            )
+            raise ValueError(error_msg)
+        
+        # Double-check: ensure all required columns are accessible
+        for col in required_cols:
+            if col not in df.columns:
+                raise ValueError(
+                    f"Critical error: Column '{col}' not found after mapping in file {file_path}\n"
+                    f"Available columns: {list(df.columns)}\n"
+                    f"Original columns: {original_columns}"
+                )
         
         # Find depot (id=0 or first row with demand=0)
-        depot_row = df[df['DEMAND'] == 0].iloc[0] if len(df[df['DEMAND'] == 0]) > 0 else df.iloc[0]
-        depot = Customer(
-            id=0,
-            x=float(depot_row['XCOORD.']),
-            y=float(depot_row['YCOORD.']),
-            demand=0.0,
-            ready_time=float(depot_row['READY TIME']),
-            due_time=float(depot_row['DUE DATE']),
-            service_time=float(depot_row['SERVICE TIME'])
-        )
+        try:
+            depot_row = df[df['DEMAND'] == 0].iloc[0] if len(df[df['DEMAND'] == 0]) > 0 else df.iloc[0]
+        except (IndexError, KeyError) as e:
+            raise ValueError(f"Error finding depot in CSV file {file_path}: {e}. Available columns: {list(df.columns)}")
+        
+        try:
+            depot = Customer(
+                id=0,
+                x=float(depot_row['XCOORD.']),
+                y=float(depot_row['YCOORD.']),
+                demand=0.0,
+                ready_time=float(depot_row['READY TIME']),
+                due_time=float(depot_row['DUE DATE']),
+                service_time=float(depot_row['SERVICE TIME'])
+            )
+        except (KeyError, ValueError) as e:
+            raise ValueError(
+                f"Error parsing depot row in CSV file {file_path}: {e}\n"
+                f"Available columns: {list(df.columns)}\n"
+                f"Depot row columns: {list(depot_row.index) if hasattr(depot_row, 'index') else 'N/A'}\n"
+                f"Column mapping: {column_mapping}"
+            )
         
         # Parse customers (exclude depot)
         customers = []
         depot_cust_no = depot_row['CUST NO.']
-        for _, row in df.iterrows():
-            # Skip depot (demand=0 and same customer number as depot)
-            if row['DEMAND'] == 0 and int(row['CUST NO.']) == int(depot_cust_no):
-                continue
-            
-            customer = Customer(
-                id=int(row['CUST NO.']),
-                x=float(row['XCOORD.']),
-                y=float(row['YCOORD.']),
-                demand=float(row['DEMAND']),
-                ready_time=float(row['READY TIME']),
-                due_time=float(row['DUE DATE']),
-                service_time=float(row['SERVICE TIME'])
+        
+        try:
+            # Iterate using iloc for reliable column access
+            for idx in range(len(df)):
+                try:
+                    # Access row using iloc for reliable column access
+                    row = df.iloc[idx]
+                    
+                    # Verify all required columns are accessible
+                    for col in required_cols:
+                        if col not in row.index:
+                            raise KeyError(f"Column '{col}' not found in row index")
+                    
+                    # Get values
+                    demand_val = float(row['DEMAND'])
+                    cust_no_val = int(row['CUST NO.'])
+                    
+                    # Skip depot (demand=0 and same customer number as depot)
+                    if demand_val == 0 and cust_no_val == int(depot_cust_no):
+                        continue
+                    
+                    customer = Customer(
+                        id=cust_no_val,
+                        x=float(row['XCOORD.']),
+                        y=float(row['YCOORD.']),
+                        demand=demand_val,
+                        ready_time=float(row['READY TIME']),
+                        due_time=float(row['DUE DATE']),
+                        service_time=float(row['SERVICE TIME'])
+                    )
+                    customers.append(customer)
+                except (KeyError, ValueError, IndexError) as e:
+                    raise ValueError(
+                        f"Error parsing customer row {idx} in CSV file {file_path}: {e}\n"
+                        f"Expected columns: {required_cols}\n"
+                        f"Available columns in dataframe: {list(df.columns)}\n"
+                        f"Row index columns: {list(row.index) if 'row' in locals() else 'N/A'}\n"
+                        f"Dataframe shape: {df.shape}"
+                    )
+        except Exception as e:
+            raise ValueError(
+                f"Error iterating through customers in CSV file {file_path}: {e}\n"
+                f"Available columns: {list(df.columns)}\n"
+                f"Column mapping: {column_mapping}"
             )
-            customers.append(customer)
         
         # Sort by customer ID
         customers.sort(key=lambda c: c.id)
