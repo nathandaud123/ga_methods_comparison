@@ -176,6 +176,45 @@ class SolomonParser:
                     f"Original columns: {original_columns}"
                 )
         
+        # Clean data: strip whitespace and handle malformed values
+        # Some CSV files may have extra whitespace or multiple values in cells
+        for col in required_cols:
+            if col in df.columns:
+                # Convert to string first, then strip and clean
+                df[col] = df[col].astype(str).str.strip()
+                # Handle cases where cell contains multiple values (take first value)
+                # Example: '0.00    1' -> '0.00'
+                df[col] = df[col].str.split().str[0]
+                # Replace empty strings with NaN
+                df[col] = df[col].replace('', np.nan)
+        
+        # Helper functions for safe conversion
+        def safe_float(value, default=0.0):
+            """Safely convert value to float, handling whitespace and invalid values"""
+            if pd.isna(value):
+                return default
+            if isinstance(value, (int, float)):
+                return float(value)
+            # Convert to string, strip, and take first value if multiple
+            str_val = str(value).strip().split()[0] if str(value).strip() else str(default)
+            try:
+                return float(str_val)
+            except (ValueError, TypeError):
+                return default
+        
+        def safe_int(value, default=0):
+            """Safely convert value to int, handling whitespace and invalid values"""
+            if pd.isna(value):
+                return default
+            if isinstance(value, (int, float)):
+                return int(value)
+            # Convert to string, strip, and take first value if multiple
+            str_val = str(value).strip().split()[0] if str(value).strip() else str(default)
+            try:
+                return int(float(str_val))  # Convert via float first to handle "1.0"
+            except (ValueError, TypeError):
+                return default
+        
         # Find depot (id=0 or first row with demand=0)
         try:
             depot_row = df[df['DEMAND'] == 0].iloc[0] if len(df[df['DEMAND'] == 0]) > 0 else df.iloc[0]
@@ -185,12 +224,12 @@ class SolomonParser:
         try:
             depot = Customer(
                 id=0,
-                x=float(depot_row['XCOORD.']),
-                y=float(depot_row['YCOORD.']),
+                x=safe_float(depot_row['XCOORD.']),
+                y=safe_float(depot_row['YCOORD.']),
                 demand=0.0,
-                ready_time=float(depot_row['READY TIME']),
-                due_time=float(depot_row['DUE DATE']),
-                service_time=float(depot_row['SERVICE TIME'])
+                ready_time=safe_float(depot_row['READY TIME']),
+                due_time=safe_float(depot_row['DUE DATE']),
+                service_time=safe_float(depot_row['SERVICE TIME'])
             )
         except (KeyError, ValueError) as e:
             raise ValueError(
@@ -202,7 +241,7 @@ class SolomonParser:
         
         # Parse customers (exclude depot)
         customers = []
-        depot_cust_no = depot_row['CUST NO.']
+        depot_cust_no = safe_int(depot_row['CUST NO.'])
         
         try:
             # Iterate using iloc for reliable column access
@@ -216,9 +255,9 @@ class SolomonParser:
                         if col not in row.index:
                             raise KeyError(f"Column '{col}' not found in row index")
                     
-                    # Get values
-                    demand_val = float(row['DEMAND'])
-                    cust_no_val = int(row['CUST NO.'])
+                    # Get values using safe conversion
+                    cust_no_val = safe_int(row['CUST NO.'])
+                    demand_val = safe_float(row['DEMAND'])
                     
                     # Skip depot (demand=0 and same customer number as depot)
                     if demand_val == 0 and cust_no_val == int(depot_cust_no):
@@ -226,20 +265,22 @@ class SolomonParser:
                     
                     customer = Customer(
                         id=cust_no_val,
-                        x=float(row['XCOORD.']),
-                        y=float(row['YCOORD.']),
+                        x=safe_float(row['XCOORD.']),
+                        y=safe_float(row['YCOORD.']),
                         demand=demand_val,
-                        ready_time=float(row['READY TIME']),
-                        due_time=float(row['DUE DATE']),
-                        service_time=float(row['SERVICE TIME'])
+                        ready_time=safe_float(row['READY TIME']),
+                        due_time=safe_float(row['DUE DATE']),
+                        service_time=safe_float(row['SERVICE TIME'])
                     )
                     customers.append(customer)
                 except (KeyError, ValueError, IndexError) as e:
+                    # Show actual row values for debugging
+                    row_values = {col: str(row[col]) if col in row.index else 'MISSING' for col in required_cols}
                     raise ValueError(
                         f"Error parsing customer row {idx} in CSV file {file_path}: {e}\n"
                         f"Expected columns: {required_cols}\n"
+                        f"Row values: {row_values}\n"
                         f"Available columns in dataframe: {list(df.columns)}\n"
-                        f"Row index columns: {list(row.index) if 'row' in locals() else 'N/A'}\n"
                         f"Dataframe shape: {df.shape}"
                     )
         except Exception as e:
