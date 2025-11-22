@@ -373,11 +373,33 @@ class ExperimentEvaluator:
                     checkpoint_results = []
                     # Reload checkpoint state to get latest data
                     self.checkpoint_manager._load(use_lock=False)
-                    if instance_name in self.checkpoint_manager.state.get('partial_progress', {}):
+                    
+                    print(f"\n  [DEBUG] Attempting to load results for {method_name}:")
+                    print(f"    - Method marked as complete: {is_complete}")
+                    print(f"    - Completed runs in checkpoint: {len(completed_runs)}/{self.n_runs}")
+                    sys.stdout.flush()
+                    
+                    has_partial_progress = instance_name in self.checkpoint_manager.state.get('partial_progress', {})
+                    print(f"    - Has partial_progress for instance: {has_partial_progress}")
+                    sys.stdout.flush()
+                    
+                    if has_partial_progress:
                         method_progress = self.checkpoint_manager.state['partial_progress'][instance_name].get(method_name, {})
+                        method_progress_exists = method_progress is not None and method_progress != {}
+                        print(f"    - Method progress found: {method_progress_exists}")
+                        sys.stdout.flush()
+                        
                         if isinstance(method_progress, dict):
+                            print(f"    - Method progress type: dict")
+                            print(f"    - Method progress keys: {list(method_progress.keys())}")
+                            sys.stdout.flush()
+                            
                             # Check if it's summary format (status='complete')
                             if 'status' in method_progress and method_progress['status'] == 'complete':
+                                print(f"    - Format: Summary (status='complete')")
+                                print(f"    - Completed runs in summary: {method_progress.get('completed_runs', 0)}")
+                                sys.stdout.flush()
+                                
                                 # Method is complete but data might be in summary format
                                 # Try to load from convergence CSV file instead
                                 if self.save_history and self.history_dir:
@@ -385,12 +407,22 @@ class ExperimentEvaluator:
                                         self.history_dir,
                                         f"{method_name}_convergence.csv"
                                     )
+                                    print(f"    - Trying convergence file: {convergence_file}")
+                                    print(f"    - Convergence file exists: {os.path.exists(convergence_file)}")
+                                    sys.stdout.flush()
+                                    
                                     if os.path.exists(convergence_file):
                                         try:
                                             df = pd.read_csv(convergence_file)
+                                            print(f"    - Convergence file loaded: {len(df)} rows")
+                                            sys.stdout.flush()
+                                            
                                             if len(df) > 0:
                                                 last_row = df.iloc[-1]
                                                 fitness_cols = [col for col in df.columns if col.startswith('fitness_run_')]
+                                                print(f"    - Fitness columns found: {len(fitness_cols)} ({fitness_cols})")
+                                                sys.stdout.flush()
+                                                
                                                 if fitness_cols:
                                                     for col in fitness_cols:
                                                         fitness = float(last_row[col])
@@ -406,11 +438,33 @@ class ExperimentEvaluator:
                                                             total_distance=fitness
                                                         )
                                                         checkpoint_results.append(metrics)
+                                                    print(f"    - Loaded {len(checkpoint_results)} runs from convergence file")
+                                                    sys.stdout.flush()
+                                                else:
+                                                    print(f"    - WARNING: No fitness_run_ columns found in convergence file!")
+                                                    sys.stdout.flush()
+                                            else:
+                                                print(f"    - WARNING: Convergence file is empty!")
+                                                sys.stdout.flush()
                                         except Exception as e:
-                                            print(f"  Warning: Could not load convergence file for {method_name}: {e}")
+                                            print(f"    - ERROR loading convergence file: {e}")
+                                            import traceback
+                                            traceback.print_exc()
+                                            sys.stdout.flush()
+                                    else:
+                                        print(f"    - WARNING: Convergence file does not exist!")
+                                        sys.stdout.flush()
+                                else:
+                                    print(f"    - WARNING: save_history={self.save_history}, history_dir={self.history_dir}")
+                                    sys.stdout.flush()
                             else:
                                 # Load from checkpoint data (individual runs)
-                                for run_key in sorted([k for k in method_progress.keys() if k.isdigit()], key=int):
+                                print(f"    - Format: Individual runs")
+                                run_keys = sorted([k for k in method_progress.keys() if k.isdigit()], key=int)
+                                print(f"    - Run keys found: {run_keys}")
+                                sys.stdout.flush()
+                                
+                                for run_key in run_keys:
                                     run_data = method_progress[run_key]
                                     if isinstance(run_data, dict):
                                         metrics = ExperimentMetrics(
@@ -423,12 +477,26 @@ class ExperimentEvaluator:
                                             total_distance=run_data.get('fitness', 0.0)
                                         )
                                         checkpoint_results.append(metrics)
+                                
+                                print(f"    - Loaded {len(checkpoint_results)} runs from checkpoint data")
+                                sys.stdout.flush()
+                        else:
+                            print(f"    - WARNING: Method progress is not a dict! Type: {type(method_progress)}")
+                            sys.stdout.flush()
+                    else:
+                        print(f"    - WARNING: No partial_progress found for instance {instance_name}")
+                        sys.stdout.flush()
                     
                     if checkpoint_results and len(checkpoint_results) >= self.n_runs:
                         method_results_map[method_name] = checkpoint_results[:self.n_runs]  # Take only n_runs
-                        print(f"  Loaded {len(checkpoint_results)} completed runs for {method_name} from checkpoint")
+                        print(f"  ✓ Successfully loaded {len(checkpoint_results)} completed runs for {method_name} from checkpoint")
                         sys.stdout.flush()
                     else:
+                        print(f"  ✗ FAILED to load results for {method_name}:")
+                        print(f"    - Checkpoint results loaded: {len(checkpoint_results)}")
+                        print(f"    - Required: {self.n_runs}")
+                        print(f"    - Reason: Data may be in summary format or convergence file missing")
+                        sys.stdout.flush()
                         # Method is complete but we couldn't load results - that's OK, results are in saved JSON
                         # Set empty list but mark that method is complete (we'll skip warning in aggregation)
                         method_results_map[method_name] = []
