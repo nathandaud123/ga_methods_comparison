@@ -337,6 +337,9 @@ class ExperimentEvaluator:
         
         checkpoint_file = getattr(self.checkpoint_manager, 'checkpoint_file', 'results/checkpoint.json') if self.checkpoint_manager else 'results/checkpoint.json'
         
+        # Initialize set to track complete methods (for skipping warnings)
+        self._complete_methods = set()
+        
         # Process methods in batches
         num_batches = (len(pending_configs) + methods_per_batch - 1) // methods_per_batch
         
@@ -426,7 +429,10 @@ class ExperimentEvaluator:
                         print(f"  Loaded {len(checkpoint_results)} completed runs for {method_name} from checkpoint")
                         sys.stdout.flush()
                     else:
+                        # Method is complete but we couldn't load results - that's OK, results are in saved JSON
+                        # Set empty list but mark that method is complete (we'll skip warning in aggregation)
                         method_results_map[method_name] = []
+                        self._complete_methods.add(method_name)
                     continue  # Skip adding tasks for this method
                 
                 method_results_map[method_name] = []
@@ -529,10 +535,20 @@ class ExperimentEvaluator:
             # Aggregate results per method for this batch
             for method_name, results in method_results_map.items():
                 if not results:
-                    # Check if method is complete in checkpoint
-                    if self.checkpoint_manager and \
-                       self.checkpoint_manager.is_method_complete(instance_name, method_name, self.n_runs):
+                    # Check if method is complete (either from flag or checkpoint)
+                    is_complete_flag = hasattr(self, '_complete_methods') and method_name in self._complete_methods
+                    is_complete_checkpoint = False
+                    
+                    if self.checkpoint_manager:
+                        # Reload checkpoint state to ensure we have latest data
+                        self.checkpoint_manager._load(use_lock=False)
+                        is_complete_checkpoint = self.checkpoint_manager.is_method_complete(instance_name, method_name, self.n_runs)
+                    
+                    if is_complete_flag or is_complete_checkpoint:
+                        # Method is complete but we couldn't load results - that's OK, results are in saved JSON
+                        # Skip warning, results will be loaded from saved JSON file in main.py
                         continue
+                    
                     print(f"  Warning: No results for {method_name}, skipping")
                     continue
                 
