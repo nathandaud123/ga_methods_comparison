@@ -372,7 +372,7 @@ class ExperimentEvaluator:
                     # Load results from checkpoint
                     checkpoint_results = []
                     # Reload checkpoint state to get latest data
-                    self.checkpoint_manager._load(use_lock=False)
+                    self.checkpoint_manager.state = self.checkpoint_manager.load()
                     
                     print(f"\n  [DEBUG] Attempting to load results for {method_name}:")
                     print(f"    - Method marked as complete: {is_complete}")
@@ -609,7 +609,7 @@ class ExperimentEvaluator:
                     
                     if self.checkpoint_manager:
                         # Reload checkpoint state to ensure we have latest data
-                        self.checkpoint_manager._load(use_lock=False)
+                        self.checkpoint_manager.state = self.checkpoint_manager.load()
                         is_complete_checkpoint = self.checkpoint_manager.is_method_complete(instance_name, method_name, self.n_runs)
                     
                     if is_complete_flag or is_complete_checkpoint:
