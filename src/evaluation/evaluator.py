@@ -359,8 +359,75 @@ class ExperimentEvaluator:
                 # Check completed runs for this method
                 if self.checkpoint_manager:
                     completed_runs = self.checkpoint_manager.get_completed_runs(instance_name, method_name)
+                    is_complete = self.checkpoint_manager.is_method_complete(instance_name, method_name, self.n_runs)
                 else:
                     completed_runs = set()
+                    is_complete = False
+                
+                # If method is already complete, load results from checkpoint
+                if is_complete and len(completed_runs) >= self.n_runs:
+                    # Load results from checkpoint
+                    checkpoint_results = []
+                    # Reload checkpoint state to get latest data
+                    self.checkpoint_manager._load(use_lock=False)
+                    if instance_name in self.checkpoint_manager.state.get('partial_progress', {}):
+                        method_progress = self.checkpoint_manager.state['partial_progress'][instance_name].get(method_name, {})
+                        if isinstance(method_progress, dict):
+                            # Check if it's summary format (status='complete')
+                            if 'status' in method_progress and method_progress['status'] == 'complete':
+                                # Method is complete but data might be in summary format
+                                # Try to load from convergence CSV file instead
+                                if self.save_history and self.history_dir:
+                                    convergence_file = os.path.join(
+                                        self.history_dir,
+                                        f"{method_name}_convergence.csv"
+                                    )
+                                    if os.path.exists(convergence_file):
+                                        try:
+                                            df = pd.read_csv(convergence_file)
+                                            if len(df) > 0:
+                                                last_row = df.iloc[-1]
+                                                fitness_cols = [col for col in df.columns if col.startswith('fitness_run_')]
+                                                if fitness_cols:
+                                                    for col in fitness_cols:
+                                                        fitness = float(last_row[col])
+                                                        diversity_col = col.replace('fitness_run_', 'diversity_run_')
+                                                        diversity = float(last_row[diversity_col]) if diversity_col in df.columns else 0.0
+                                                        metrics = ExperimentMetrics(
+                                                            fitness=fitness,
+                                                            runtime=0.0,  # Not available in convergence file
+                                                            convergence_generation=0,
+                                                            diversity=diversity,
+                                                            solution_quality=0.0,
+                                                            num_routes=0,
+                                                            total_distance=fitness
+                                                        )
+                                                        checkpoint_results.append(metrics)
+                                        except Exception as e:
+                                            print(f"  Warning: Could not load convergence file for {method_name}: {e}")
+                            else:
+                                # Load from checkpoint data (individual runs)
+                                for run_key in sorted([k for k in method_progress.keys() if k.isdigit()], key=int):
+                                    run_data = method_progress[run_key]
+                                    if isinstance(run_data, dict):
+                                        metrics = ExperimentMetrics(
+                                            fitness=run_data.get('fitness', 0.0),
+                                            runtime=run_data.get('runtime', 0.0),
+                                            convergence_generation=run_data.get('convergence_generation', 0),
+                                            diversity=run_data.get('diversity', 0.0),
+                                            solution_quality=0.0,
+                                            num_routes=0,
+                                            total_distance=run_data.get('fitness', 0.0)
+                                        )
+                                        checkpoint_results.append(metrics)
+                    
+                    if checkpoint_results and len(checkpoint_results) >= self.n_runs:
+                        method_results_map[method_name] = checkpoint_results[:self.n_runs]  # Take only n_runs
+                        print(f"  Loaded {len(checkpoint_results)} completed runs for {method_name} from checkpoint")
+                        sys.stdout.flush()
+                    else:
+                        method_results_map[method_name] = []
+                    continue  # Skip adding tasks for this method
                 
                 method_results_map[method_name] = []
                 
@@ -417,47 +484,47 @@ class ExperimentEvaluator:
                             checkpoint_file
                         ))
             
-            if not batch_tasks:
-                print("  All runs in this batch already completed!")
-                continue
-            
-            print(f"  Executing {len(batch_tasks)} tasks ({len(batch_configs)} methods × {self.n_runs} runs)")
-            sys.stdout.flush()
-            
-            # Execute all tasks in this batch using global pool
-            completed = 0
-            total = len(batch_tasks)
-            last_update = time.time()
-            
-            with mp.Pool(processes=self.n_jobs) as pool:
-                async_results = pool.map_async(_run_single_experiment, batch_tasks)
-                
-                # Wait with progress updates
-                while not async_results.ready():
-                    time.sleep(2)
-                    elapsed = time.time() - last_update
-                    if elapsed >= 10:
-                        print(f"  ... still running ({total} tasks in progress) ...")
-                        sys.stdout.flush()
-                        last_update = time.time()
-                
-                print(f"  All {total} tasks completed, collecting results...")
+            if batch_tasks:
+                print(f"  Executing {len(batch_tasks)} tasks ({len(batch_configs)} methods × {self.n_runs} runs)")
                 sys.stdout.flush()
                 
-                # Collect results
-                for method_name_result, run_num, metrics, error in async_results.get():
-                    if error:
-                        print(f"  Error in {method_name_result} run {run_num}: {error}")
-                        sys.stdout.flush()
-                        continue
-                    if metrics:
-                        if method_name_result not in method_results_map:
-                            method_results_map[method_name_result] = []
-                        method_results_map[method_name_result].append(metrics)
-                    completed += 1
-                    if completed % max(1, total // 10) == 0:
-                        print(f"  Collected {completed}/{total} results...")
-                        sys.stdout.flush()
+                # Execute all tasks in this batch using global pool
+                completed = 0
+                total = len(batch_tasks)
+                last_update = time.time()
+                
+                with mp.Pool(processes=self.n_jobs) as pool:
+                    async_results = pool.map_async(_run_single_experiment, batch_tasks)
+                    
+                    # Wait with progress updates
+                    while not async_results.ready():
+                        time.sleep(2)
+                        elapsed = time.time() - last_update
+                        if elapsed >= 10:
+                            print(f"  ... still running ({total} tasks in progress) ...")
+                            sys.stdout.flush()
+                            last_update = time.time()
+                    
+                    print(f"  All {total} tasks completed, collecting results...")
+                    sys.stdout.flush()
+                    
+                    # Collect results
+                    for method_name_result, run_num, metrics, error in async_results.get():
+                        if error:
+                            print(f"  Error in {method_name_result} run {run_num}: {error}")
+                            sys.stdout.flush()
+                            continue
+                        if metrics:
+                            if method_name_result not in method_results_map:
+                                method_results_map[method_name_result] = []
+                            method_results_map[method_name_result].append(metrics)
+                        completed += 1
+                        if completed % max(1, total // 10) == 0:
+                            print(f"  Collected {completed}/{total} results...")
+                            sys.stdout.flush()
+            else:
+                print("  All runs in this batch already completed (loaded from checkpoint)")
+                sys.stdout.flush()
             
             # Aggregate results per method for this batch
             for method_name, results in method_results_map.items():
