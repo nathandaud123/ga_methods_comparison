@@ -1,5 +1,10 @@
 """
-Main script for GA Method Comparison Study
+Main script for GA Method Comparison Study (Simplified Version)
+- All combinations of representation, selection, crossover, mutation
+- Each combination runs 5 times
+- Saves generation history for each run
+- Calculates and saves average per generation
+- Tests all combinations on all instances
 """
 
 import argparse
@@ -8,18 +13,12 @@ import os
 import json
 from pathlib import Path
 from datetime import datetime
-import numpy as np
 from typing import List, Dict, Tuple
 
 from src.data.solomon_parser import SolomonParser
-from src.ga.genetic_algorithm import GAConfig, GeneticAlgorithm
-from src.evaluation.evaluator import ExperimentEvaluator
-from src.evaluation.metrics import ComparisonMetrics
-from src.evaluation.checkpoint import CheckpointManager
-from src.evaluation.task_distributor import TaskDistributor
-from src.visualization.route_plotter import RoutePlotter
-from src.visualization.result_plotter import ResultPlotter
-from src.tuning.optuna_tuner import OptunaTuner
+from src.ga.genetic_algorithm import GAConfig
+from src.evaluation.simple_evaluator import SimpleEvaluator
+from src.evaluation.parallel_executor import FileLock
 
 
 def load_config(config_path: str) -> dict:
@@ -29,137 +28,41 @@ def load_config(config_path: str) -> dict:
     return config
 
 
-def generate_results_from_checkpoint(checkpoint_manager: CheckpointManager, 
-                                     instance_name: str, 
-                                     results_dir: str) -> Dict:
-    """
-    Generate results JSON file from checkpoint data
-    
-    Args:
-        checkpoint_manager: Checkpoint manager instance
-        instance_name: Name of the instance
-        results_dir: Directory to save results file
-        
-    Returns:
-        Dictionary of method results, or empty dict if no data
-    """
-    results_dict = {}
-    
-    # Get completed methods for this instance
-    completed_methods = checkpoint_manager.state.get('completed_methods', {}).get(instance_name, [])
-    if not completed_methods:
-        return results_dict
-    
-    # Get partial progress data
-    partial_progress = checkpoint_manager.state.get('partial_progress', {}).get(instance_name, {})
-    
-    for method_name in completed_methods:
-        method_progress = partial_progress.get(method_name, {})
-        
-        # Check if we have run data (not just summary)
-        run_data = {}
-        if isinstance(method_progress, dict):
-            # Check if it's summary format or run data format
-            if 'status' in method_progress and method_progress['status'] == 'complete':
-                # This is summary format - load from convergence CSV files
-                run_data = None  # Will trigger convergence file loading
-            else:
-                # This is run data format - extract metrics
-                for run_key, run_result in method_progress.items():
-                    if run_key.isdigit():
-                        run_data[int(run_key)] = run_result
-        
-        # If no run data, try to load from convergence CSV files
-        if not run_data:
-            # Find convergence directory (sibling of experiments directory)
-            # results_dir is like: results/experiments/C101
-            # convergence_dir should be: results/convergence/C101
-            if 'experiments' in results_dir:
-                convergence_dir = results_dir.replace('experiments', 'convergence')
-            else:
-                # Fallback: assume results_dir is base, go up one level
-                convergence_dir = os.path.join(os.path.dirname(results_dir), 'convergence', instance_name)
-            convergence_file = os.path.join(
-                convergence_dir,
-                f"{method_name}_convergence.csv"
-            )
-            if os.path.exists(convergence_file):
-                try:
-                    import pandas as pd
-                    df = pd.read_csv(convergence_file)
-                    # Extract final fitness for each run (last row)
-                    if len(df) > 0:
-                        last_row = df.iloc[-1]
-                        # Get fitness for each run
-                        fitness_cols = [col for col in df.columns if col.startswith('fitness_run_')]
-                        if fitness_cols:
-                            fitnesses = [last_row[col] for col in fitness_cols if col in last_row]
-                            # Get diversity for each run
-                            diversity_cols = [col for col in df.columns if col.startswith('diversity_run_')]
-                            diversities = [last_row[col] for col in diversity_cols if col in last_row] if diversity_cols else []
-                            
-                            if fitnesses:
-                                # Use fitness_min as best, fitness_max as worst
-                                best_fitness = last_row.get('fitness_min', min(fitnesses))
-                                worst_fitness = last_row.get('fitness_max', max(fitnesses))
-                                
-                                results_dict[method_name] = {
-                                    'mean_fitness': float(np.mean(fitnesses)),
-                                    'std_fitness': float(np.std(fitnesses)),
-                                    'mean_runtime': 0.0,  # Not available in convergence file
-                                    'std_runtime': 0.0,
-                                    'best_fitness': float(best_fitness),
-                                    'worst_fitness': float(worst_fitness),
-                                }
-                except Exception as e:
-                    print(f"  Warning: Could not load convergence file {convergence_file}: {e}")
-            continue
-        
-        # Aggregate metrics from run data
-        fitnesses = []
-        runtimes = []
-        convergences = []
-        diversities = []
-        
-        for run_num, run_result in sorted(run_data.items()):
-            if isinstance(run_result, dict):
-                fitnesses.append(run_result.get('fitness', 0.0))
-                runtimes.append(run_result.get('runtime', 0.0))
-                convergences.append(run_result.get('convergence_generation', 0))
-                diversities.append(run_result.get('diversity', 0.0))
-        
-        if fitnesses:
-            results_dict[method_name] = {
-                'mean_fitness': float(np.mean(fitnesses)),
-                'std_fitness': float(np.std(fitnesses)),
-                'mean_runtime': float(np.mean(runtimes)),
-                'std_runtime': float(np.std(runtimes)),
-                'best_fitness': float(np.min(fitnesses)),
-                'worst_fitness': float(np.max(fitnesses)),
-            }
-    
-    # Save results file if we have data
-    if results_dict:
-        results_file = os.path.join(results_dir, f"{instance_name}_results.json")
-        with open(results_file, 'w') as f:
-            json.dump(results_dict, f, indent=2)
-    
-    return results_dict
-
-
 def create_output_dirs(config: dict):
     """Create output directories"""
     output_config = config.get('output', {})
-    dirs = [
-        output_config.get('results_dir', 'results'),
-        output_config.get('experiments_dir', 'results/experiments'),
-        output_config.get('plots_dir', 'results/plots'),
-        output_config.get('routes_dir', 'results/routes'),
-        output_config.get('convergence_dir', 'results/convergence'),
-        output_config.get('tuning_dir', 'results/tuning'),
-    ]
-    for dir_path in dirs:
-        os.makedirs(dir_path, exist_ok=True)
+    results_dir = output_config.get('results_dir', 'results')
+    os.makedirs(results_dir, exist_ok=True)
+
+
+def _save_result_to_json(results_file: str, method_name: str, result: dict):
+    """
+    Thread-safe function to save a single method result to JSON file.
+    Loads existing results, adds new result, and saves back.
+    """
+    lock_file = results_file + '.lock'
+    
+    try:
+        with FileLock(lock_file):
+            # Load existing results
+            existing_results = {}
+            if os.path.exists(results_file):
+                try:
+                    with open(results_file, 'r') as f:
+                        existing_results = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    existing_results = {}
+            
+            # Add/update the new result
+            existing_results[method_name] = result
+            
+            # Save back to file
+            with open(results_file, 'w') as f:
+                json.dump(existing_results, f, indent=2)
+            
+            print(f"  ✓ Saved result for {method_name} to {results_file}")
+    except Exception as e:
+        print(f"  Warning: Could not save result for {method_name}: {e}")
 
 
 def generate_method_combinations(config: dict) -> List[Tuple[str, GAConfig]]:
@@ -192,13 +95,13 @@ def generate_method_combinations(config: dict) -> List[Tuple[str, GAConfig]]:
                         max_generations=ga_base.get('max_generations', 500),
                         crossover_rate=ga_base.get('crossover_rate', 0.8),
                         mutation_rate=ga_base.get('mutation_rate', 0.1),
-                        elitism_rate=ga_base.get('elitism_rate', 0.1),
+                        elitism_rate=0.0,  # No elitism
                         tournament_size=ga_base.get('tournament_size', 3),
                         selection_method=sel,
                         crossover_method=cross,
                         mutation_method=mut,
                         representation=rep,
-                        verbose=config.get('output', {}).get('verbose', True)
+                        verbose=config.get('output', {}).get('verbose', False)
                     )
                     
                     combinations.append((method_name, ga_config))
@@ -206,132 +109,111 @@ def generate_method_combinations(config: dict) -> List[Tuple[str, GAConfig]]:
     return combinations
 
 
-def run_comparison_study(config: dict):
-    """Run complete comparison study"""
+def discover_instances(base_path: str) -> List[str]:
+    """Discover all CSV instances from subfolders"""
+    instances = []
+    
+    for subfolder in ['C1', 'C2', 'R1', 'R2', 'RC1', 'RC2']:
+        subfolder_path = os.path.join(base_path, subfolder)
+        if os.path.exists(subfolder_path):
+            csv_files = [f for f in os.listdir(subfolder_path) 
+                        if f.endswith(('.csv', '.CSV'))]
+            for csv_file in sorted(csv_files):
+                instances.append(os.path.join(subfolder_path, csv_file))
+    
+    return instances
+
+
+def run_comparison_study(config: dict, instance_name: str = None):
+    """
+    Run complete comparison study
+    
+    Args:
+        config: Configuration dictionary
+        instance_name: Optional instance name to process (if None, process all instances)
+    """
     print("="*80)
-    print("Genetic Algorithm Method Comparison Study")
+    print("Genetic Algorithm Method Comparison Study (Simplified)")
+    print("="*80)
+    if instance_name:
+        print(f"Processing single instance: {instance_name}")
+    print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*80)
     
     # Create output directories
     create_output_dirs(config)
     
-    # Get output config (needed later for summary)
+    # Initialize checkpoint
+    from src.evaluation.simple_checkpoint import SimpleCheckpoint
     output_config = config.get('output', {})
+    results_dir = output_config.get('results_dir', 'results')
     
-    # Initialize checkpoint manager
-    checkpoint_file = output_config.get('checkpoint_file', 'results/checkpoint.json')
-    checkpoint_manager = CheckpointManager(checkpoint_file)
+    # Use instance-specific checkpoint if instance_name is provided
+    if instance_name:
+        checkpoint_file = os.path.join(results_dir, f'checkpoint_{instance_name}.json')
+        print(f"Using instance-specific checkpoint: {checkpoint_file}")
+    else:
+        checkpoint_file = os.path.join(results_dir, 'checkpoint.json')
     
-    # Initialize task distributor for multi-device execution
-    device_config = config.get('device', {})
-    device_id = device_config.get('device_id', None)
-    total_devices = device_config.get('total_devices', 1)
-    task_distributor = None
+    checkpoint = SimpleCheckpoint(checkpoint_file)
     
-    if device_id and total_devices > 1:
-        task_distributor = TaskDistributor(device_id, total_devices, checkpoint_file)
-        print(f"\n{'='*80}")
-        print(f"MULTI-DEVICE MODE: Device {device_id} of {total_devices}")
-        print(f"{'='*80}")
-        summary = task_distributor.get_summary()
-        print(f"Assigned instances: {summary['assigned_instances']}")
-        print(f"Instances: {summary['instances'][:5]}..." if len(summary['instances']) > 5 else f"Instances: {summary['instances']}")
-        print(f"{'='*80}\n")
+    # Get parallel config
+    n_jobs = config.get('evaluation', {}).get('n_jobs', None)
+    if n_jobs is None:
+        n_jobs = 1  # Sequential by default
+    elif n_jobs == 0:
+        import multiprocessing as mp
+        n_jobs = max(1, mp.cpu_count() - 1)  # Auto: use all cores except one
     
-    # Show checkpoint status
-    if checkpoint_manager.state['completed_instances'] or checkpoint_manager.state['completed_methods']:
-        print(f"\n{'='*80}")
-        print("CHECKPOINT STATUS")
-        print(f"{'='*80}")
-        summary = checkpoint_manager.get_progress_summary()
-        print(f"Completed instances: {summary['completed_instances']}")
-        print(f"Instances with progress: {summary['instances_with_progress']}")
-        for inst, num_methods in summary['completed_methods_by_instance'].items():
-            print(f"  - {inst}: {num_methods} methods completed")
-        print(f"{'='*80}\n")
+    if n_jobs > 1:
+        print(f"\nParallel execution enabled: {n_jobs} workers")
+    else:
+        print(f"\nSequential execution (n_jobs=1)")
     
     # Load dataset
     dataset_config = config.get('dataset', {})
     base_path = dataset_config.get('base_path', 'data/solomon')
-    instances = dataset_config.get('instances', [])
     
-    # If instances specified as simple names, try to find in subfolders
-    if instances:
-        # Expand instances to include subfolder paths
-        expanded_instances = []
-        for instance_name in instances:
-            instance_name_clean = instance_name.replace('.txt', '').replace('.csv', '')
-            
-            # Try different possible locations
-            possible_paths = [
-                os.path.join(base_path, instance_name),  # Direct path
-                os.path.join(base_path, instance_name_clean + '.csv'),  # CSV in root
-                os.path.join(base_path, instance_name_clean + '.txt'),  # TXT in root
-            ]
-            
-            # Try subfolder structure (C1/C101.csv, R1/R101.csv, etc)
-            if instance_name_clean[0] in ['C', 'R']:
-                folder_num = instance_name_clean[1] if len(instance_name_clean) > 1 and instance_name_clean[1].isdigit() else '1'
-                folder_name = instance_name_clean[0] + folder_num
-                possible_paths.extend([
-                    os.path.join(base_path, folder_name, instance_name_clean + '.csv'),
-                    os.path.join(base_path, folder_name, instance_name_clean + '.txt'),
-                ])
-            
-            # Find first existing path
-            found_path = None
-            for path in possible_paths:
-                if os.path.exists(path):
-                    found_path = path
-                    break
-            
-            if found_path:
-                expanded_instances.append(found_path)
-            else:
-                print(f"Warning: Instance file not found: {instance_name}")
-                print(f"  Tried paths: {possible_paths[:3]}...")
-        
-        instances = expanded_instances if expanded_instances else None
+    # Discover instances
+    print("\nDiscovering instances...")
+    all_instances = discover_instances(base_path)
+    if not all_instances:
+        print("No instances found!")
+        return
     
-    # If no instances specified, try to auto-discover from subfolders
-    if not instances:
-        print("No instances specified. Auto-discovering ALL datasets from subfolders...")
+    # Filter by instance_name if provided
+    if instance_name:
+        # Find instance by name (case-insensitive, with or without extension)
+        target_name = instance_name.upper()
         instances = []
-        
-        # Look for CSV files in subfolders
-        for subfolder in ['C1', 'C2', 'R1', 'R2', 'RC1', 'RC2']:
-            subfolder_path = os.path.join(base_path, subfolder)
-            if os.path.exists(subfolder_path):
-                csv_files = [f for f in os.listdir(subfolder_path) 
-                            if f.endswith(('.csv', '.CSV'))]
-                # Include ALL CSV files (no limit)
-                for csv_file in sorted(csv_files):
-                    instances.append(os.path.join(subfolder_path, csv_file))
+        for inst_path in all_instances:
+            inst_file_name = os.path.basename(inst_path)
+            inst_name = os.path.splitext(inst_file_name)[0].upper()
+            if inst_name == target_name:
+                instances.append(inst_path)
+                break
         
         if not instances:
-            print("No instances found. Using default test instance.")
-            instances = ['test_instance.txt']
-        else:
-            print(f"Found {len(instances)} instances to process")
+            print(f"ERROR: Instance '{instance_name}' not found!")
+            print(f"Available instances: {[os.path.splitext(os.path.basename(p))[0] for p in all_instances[:10]]}...")
+            return
+        print(f"Processing single instance: {instance_name}")
+    else:
+        instances = all_instances
+        print(f"Found {len(instances)} instances to process")
     
-    # Filter instances if multi-device mode
-    if task_distributor:
-        original_count = len(instances)
-        instance_names = [os.path.basename(os.path.normpath(ip)).split('.')[0] for ip in instances]
-        filtered_names = task_distributor.filter_instances(instance_names)
-        # Filter instance_paths to match filtered names
-        instances = [ip for ip in instances 
-                    if os.path.basename(os.path.normpath(ip)).split('.')[0] in filtered_names]
-        print(f"\n{'='*80}")
-        print(f"DEVICE {device_id}: Filtered {len(instances)}/{original_count} instances")
-        print(f"{'='*80}\n")
+    # Generate method combinations
+    print("\nGenerating method combinations...")
+    method_combinations = generate_method_combinations(config)
+    print(f"Total combinations: {len(method_combinations)}")
+    
+    # Get evaluation config
+    n_runs = config.get('evaluation', {}).get('n_runs', 5)
     
     # Process each instance
     all_results = {}
-    processed_instances = 0
     
     for instance_path in instances:
-        # Normalize path for cross-platform compatibility
         instance_path = os.path.normpath(instance_path)
         
         if not os.path.exists(instance_path):
@@ -339,636 +221,103 @@ def run_comparison_study(config: dict):
             continue
         
         instance_file_name = os.path.basename(instance_path)
+        instance_name = os.path.splitext(instance_file_name)[0]
+        
+        print(f"\n{'='*80}")
+        print(f"Processing instance: {instance_name}")
+        print(f"File: {instance_file_name}")
+        print(f"{'='*80}")
         
         # Parse instance
         parser = SolomonParser()
         instance = parser.parse(instance_path)
         
-        # Check if instance is already complete (from any device)
-        if checkpoint_manager.is_instance_complete(instance.name):
+        # Check if instance already complete
+        if checkpoint.is_instance_complete(instance.name):
             print(f"\n{'='*80}")
             print(f"Skipping instance: {instance.name} (already completed)")
             print(f"{'='*80}")
-            
-            # Setup directories for this instance
-            instance_results_dir = os.path.join(output_config.get('experiments_dir', 'results/experiments'), instance.name)
-            instance_plots_dir = os.path.join(output_config.get('plots_dir', 'results/plots'), instance.name)
-            instance_routes_dir = os.path.join(output_config.get('routes_dir', 'results/routes'), instance.name)
-            instance_convergence_dir = os.path.join(output_config.get('convergence_dir', 'results/convergence'), instance.name)
-            
-            os.makedirs(instance_results_dir, exist_ok=True)
-            os.makedirs(instance_plots_dir, exist_ok=True)
-            os.makedirs(instance_routes_dir, exist_ok=True)
-            os.makedirs(instance_convergence_dir, exist_ok=True)
-            
-            results_file = os.path.join(instance_results_dir, f"{instance.name}_results.json")
-            
             # Try to load existing results
+            results_file = os.path.join(results_dir, instance.name, f"{instance.name}_results.json")
             if os.path.exists(results_file):
                 with open(results_file, 'r') as f:
-                    results_dict = json.load(f)
-                    all_results[instance.name] = results_dict
+                    instance_results = json.load(f)
+                    all_results[instance.name] = instance_results
                     print(f"  Loaded existing results from {results_file}")
-            else:
-                # Generate results from checkpoint
-                print(f"  Generating results from checkpoint...")
-                results_dict = generate_results_from_checkpoint(
-                    checkpoint_manager, instance.name, instance_results_dir
-                )
-                if results_dict:
-                    all_results[instance.name] = results_dict
-                    print(f"  Generated results for {len(results_dict)} methods")
-                else:
-                    print(f"  Warning: Could not generate results from checkpoint")
-            
-            # Generate plots and routes if missing
-            if results_dict and config.get('evaluation', {}).get('save_plots', True):
-                # Check if plots exist
-                plot_files = [
-                    os.path.join(instance_plots_dir, f"{instance.name}_fitness_comparison.png"),
-                    os.path.join(instance_plots_dir, f"{instance.name}_runtime_comparison.png"),
-                    os.path.join(instance_plots_dir, f"{instance.name}_heatmap.png"),
-                ]
-                if not all(os.path.exists(f) for f in plot_files):
-                    print(f"  Generating missing plots...")
-                    # Convert results_dict to ComparisonMetrics for plotting
-                    comparison_results = {}
-                    for method_name, metrics_dict in results_dict.items():
-                        from src.evaluation.metrics import ComparisonMetrics
-                        comparison_results[method_name] = ComparisonMetrics(
-                            method_name=method_name,
-                            mean_fitness=metrics_dict.get('mean_fitness', 0.0),
-                            std_fitness=metrics_dict.get('std_fitness', 0.0),
-                            mean_runtime=metrics_dict.get('mean_runtime', 0.0),
-                            std_runtime=metrics_dict.get('std_runtime', 0.0),
-                            best_fitness=metrics_dict.get('best_fitness', 0.0),
-                            worst_fitness=metrics_dict.get('worst_fitness', 0.0),
-                            mean_convergence=0.0,
-                            std_convergence=0.0,
-                            mean_diversity=0.0,
-                            std_diversity=0.0,
-                            success_rate=1.0
-                        )
-                    
-                    plotter = ResultPlotter()
-                    plotter.plot_comparison_bar(
-                        comparison_results,
-                        metric='mean_fitness',
-                        save_path=plot_files[0],
-                        show=False
-                    )
-                    plotter.plot_comparison_bar(
-                        comparison_results,
-                        metric='mean_runtime',
-                        save_path=plot_files[1],
-                        show=False
-                    )
-                    plotter.plot_comparison_heatmap(
-                        comparison_results,
-                        save_path=plot_files[2],
-                        show=False
-                    )
-                    print(f"  Plots generated")
-            
             continue
         
-        # Additional safety: Check if this instance is assigned to this device
-        if task_distributor:
-            assigned_instances = task_distributor.get_assigned_instances()
-            if instance.name not in assigned_instances:
-                print(f"\n{'='*80}")
-                print(f"Skipping instance: {instance.name} (not assigned to this device)")
-                print(f"{'='*80}")
-                continue
-        
-        print(f"\n{'='*80}")
-        print(f"Processing instance: {instance_file_name}")
-        print(f"Path: {instance_path}")
-        print(f"{'='*80}")
         print(f"Instance: {instance.name}")
         print(f"Type: {instance.type}")
         print(f"Customers: {instance.num_customers}")
         print(f"Capacity: {instance.vehicle_capacity}")
         
-        # Generate method combinations
-        method_combinations = generate_method_combinations(config)
-        print(f"\nTotal method combinations to test: {len(method_combinations)}")
-        print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        import sys
-        sys.stdout.flush()  # Force flush output
+        # Get completed methods for this instance
+        completed_methods = checkpoint.get_completed_methods(instance.name)
+        if completed_methods:
+            print(f"Resuming: {len(completed_methods)}/{len(method_combinations)} methods already completed")
         
-        # Setup directories for this instance
-        instance_results_dir = os.path.join(output_config.get('experiments_dir', 'results/experiments'), instance.name)
-        instance_plots_dir = os.path.join(output_config.get('plots_dir', 'results/plots'), instance.name)
-        instance_routes_dir = os.path.join(output_config.get('routes_dir', 'results/routes'), instance.name)
-        instance_convergence_dir = os.path.join(output_config.get('convergence_dir', 'results/convergence'), instance.name)
-        instance_tuning_dir = os.path.join(output_config.get('tuning_dir', 'results/tuning'), instance.name)
+        # Initialize evaluator
+        evaluator = SimpleEvaluator(instance, n_runs=n_runs, output_dir=results_dir,
+                                   checkpoint=checkpoint, n_jobs=n_jobs)
         
-        os.makedirs(instance_results_dir, exist_ok=True)
-        os.makedirs(instance_plots_dir, exist_ok=True)
-        os.makedirs(instance_routes_dir, exist_ok=True)
-        os.makedirs(instance_convergence_dir, exist_ok=True)
-        os.makedirs(instance_tuning_dir, exist_ok=True)
+        # Results file path
+        results_file = os.path.join(results_dir, instance.name, f"{instance.name}_results.json")
         
-        # Optuna tuning (if enabled) - MUST run BEFORE experiments
-        # Each method combination gets its own tuning to find optimal parameters
-        optuna_config = config.get('optuna', {})
-        eval_config = config.get('evaluation', {})  # Need this for n_runs check
-        
-        if optuna_config.get('enabled', False):
-            print("\n" + "="*80)
-            print("STEP 1: OPTUNA PARAMETER TUNING")
-            print("="*80)
-            
-            # Check if parallel tuning is enabled
-            parallel_tuning = optuna_config.get('parallel_tuning', False)
-            n_jobs_tuning = eval_config.get('n_jobs', None) if parallel_tuning else 1
-            
-            if parallel_tuning:
-                print(f"PARALLEL TUNING MODE: {len(method_combinations)} methods × {optuna_config.get('n_trials', 1)} trial(s)")
-                print(f"Using {n_jobs_tuning} workers for parallel tuning")
-                print(f"Each method will be tuned in parallel on separate CPU cores\n")
-            else:
-                print(f"SEQUENTIAL TUNING MODE: {len(method_combinations)} methods")
-                print(f"Each method will be tuned separately to find its optimal parameters.\n")
-            
-            if method_combinations:
-                updated_methods = []
-                total_methods = len(method_combinations)
-                
-                # Use parallel tuning if enabled
-                if parallel_tuning and n_jobs_tuning and n_jobs_tuning > 1:
-                    from src.tuning.parallel_tuner import run_parallel_tuning
-                    
-                    # Filter methods that need tuning
-                    methods_to_tune = []
-                    for method_name, method_config in method_combinations:
-                        tuning_file = os.path.join(
-                            instance_tuning_dir,
-                            f"{instance.name}_{method_name}_optuna_tuning.csv"
-                        )
-                        if not os.path.exists(tuning_file):
-                            methods_to_tune.append((method_name, method_config))
-                    
-                    if methods_to_tune:
-                        print(f"Running parallel tuning for {len(methods_to_tune)} methods...")
-                        sys.stdout.flush()
-                        
-                        tuning_results = run_parallel_tuning(
-                            instance,
-                            methods_to_tune,
-                            n_trials=optuna_config.get('n_trials', 1),
-                            timeout=optuna_config.get('timeout', 3600),
-                            n_jobs=n_jobs_tuning,
-                            tuning_dir=instance_tuning_dir
-                        )
-                        
-                        print(f"\nParallel tuning complete! Processing results...")
-                        sys.stdout.flush()
-                    else:
-                        tuning_results = {}
-                        print(f"All methods already have tuning files, skipping parallel tuning...")
-                    
-                    # Process all methods (both tuned and already have tuning files)
-                    for method_name, method_config in method_combinations:
-                        tuning_file = os.path.join(
-                            instance_tuning_dir,
-                            f"{instance.name}_{method_name}_optuna_tuning.csv"
-                        )
-                        
-                        # Load best parameters from tuning file or results
-                        best_params = None
-                        if method_name in tuning_results:
-                            best_params = tuning_results[method_name]['best_params']
-                        elif os.path.exists(tuning_file):
-                            try:
-                                import pandas as pd
-                                df = pd.read_csv(tuning_file)
-                                if len(df) > 0:
-                                    best_row = df.loc[df['value'].idxmin()]
-                                    best_params = {
-                                        'population_size': int(best_row['population_size']),
-                                        'max_generations': int(best_row['max_generations']),
-                                        'crossover_rate': float(best_row['crossover_rate']),
-                                        'mutation_rate': float(best_row['mutation_rate']),
-                                        'tournament_size': int(best_row['tournament_size']),
-                                        'elitism_rate': float(best_row['elitism_rate']),
-                                    }
-                            except Exception as e:
-                                print(f"  Warning: Could not load tuning file for {method_name}: {e}")
-                        
-                        if best_params:
-                            updated_config = GAConfig(
-                                population_size=best_params['population_size'],
-                                max_generations=best_params['max_generations'],
-                                crossover_rate=best_params['crossover_rate'],
-                                mutation_rate=best_params['mutation_rate'],
-                                elitism_rate=best_params.get('elitism_rate', method_config.elitism_rate),
-                                tournament_size=best_params.get('tournament_size', method_config.tournament_size),
-                                selection_method=method_config.selection_method,
-                                crossover_method=method_config.crossover_method,
-                                mutation_method=method_config.mutation_method,
-                                representation=method_config.representation,
-                                verbose=method_config.verbose
-                            )
-                            updated_methods.append((method_name, updated_config))
-                        else:
-                            # Fallback to default config if tuning failed
-                            updated_methods.append((method_name, method_config))
-                            print(f"  Warning: Using default params for {method_name} (tuning failed or not found)")
-                    
-                    method_combinations = updated_methods
-                    print(f"\n{'='*80}")
-                    print(f"ALL {len(method_combinations)} METHODS READY WITH OPTIMIZED PARAMETERS")
-                    print(f"{'='*80}\n")
-                else:
-                    # Sequential tuning (original code)
-                    for idx, (method_name, method_config) in enumerate(method_combinations, 1):
-                        print(f"\n{'='*80}")
-                        print(f"TUNING {idx}/{total_methods}: {method_name}")
-                        print(f"{'='*80}")
-                        print(f"  Representation: {method_config.representation}")
-                        print(f"  Selection: {method_config.selection_method}")
-                        print(f"  Crossover: {method_config.crossover_method}")
-                        print(f"  Mutation: {method_config.mutation_method}")
-                        
-                        # Check if tuning file already exists
-                        tuning_file = os.path.join(
-                            instance_tuning_dir,
-                            f"{instance.name}_{method_name}_optuna_tuning.csv"
-                        )
-                        
-                        # Always check tuning file first - if exists, use it
-                        if os.path.exists(tuning_file):
-                            print(f"  Tuning already exists, loading best parameters...")
-                            try:
-                                import pandas as pd
-                                df = pd.read_csv(tuning_file)
-                                if len(df) > 0:
-                                    best_row = df.loc[df['value'].idxmin()]
-                                    best_params = {
-                                        'population_size': int(best_row['population_size']),
-                                        'max_generations': int(best_row['max_generations']),
-                                        'crossover_rate': float(best_row['crossover_rate']),
-                                        'mutation_rate': float(best_row['mutation_rate']),
-                                        'tournament_size': int(best_row['tournament_size']),
-                                        'elitism_rate': float(best_row['elitism_rate']),
-                                    }
-                                    print(f"  Loaded best parameters (fitness: {best_row['value']:.2f})")
-                                else:
-                                    best_params = None
-                            except Exception as e:
-                                print(f"  Warning: Could not load tuning file: {e}")
-                                best_params = None
-                        else:
-                            best_params = None
-                        
-                        # Check if method is already complete in checkpoint
-                        # If complete AND tuning file exists, skip tuning (already optimized)
-                        # If complete BUT tuning file doesn't exist, still run tuning (need optimization)
-                        is_complete = False
-                        if checkpoint_manager:
-                            n_runs = eval_config.get('n_runs', 10)
-                            is_complete = checkpoint_manager.is_method_complete(instance.name, method_name, n_runs)
-                        
-                        if is_complete and best_params is not None:
-                            # Method complete AND tuning exists - skip tuning (already optimized)
-                            print(f"  Method already complete with optimized parameters (skipping tuning)")
-                        elif is_complete and best_params is None:
-                            # Method complete BUT no tuning file - run tuning anyway (need optimization)
-                            print(f"  Method complete but no tuning file found - running tuning to find optimal parameters...")
-                            best_params = None  # Force tuning
-                        else:
-                            # Method not complete - run tuning if not exists
-                            if best_params is None:
-                                print(f"  Running tuning to find optimal parameters...")
-                        
-                        # Run tuning if not already done
-                        if best_params is None:
-                            tuner = OptunaTuner(
-                                instance,
-                                representation=method_config.representation,
-                                selection_method=method_config.selection_method,
-                                crossover_method=method_config.crossover_method,
-                                mutation_method=method_config.mutation_method,
-                                n_trials=optuna_config.get('n_trials', 50),
-                                timeout=optuna_config.get('timeout', 3600),
-                                save_history=optuna_config.get('save_history', True),
-                                history_dir=instance_tuning_dir
-                            )
-                            
-                            tuning_result = tuner.tune(
-                                study_name=f"{instance.name}_{method_name}_tuning",
-                                instance_name=f"{instance.name}_{method_name}"
-                            )
-                            
-                            best_params = tuning_result['best_params']
-                            
-                            print(f"\n  Tuning complete!")
-                            print(f"  Best Fitness: {tuning_result['best_value']:.2f}")
-                            print(f"  Best Parameters:")
-                            for key, value in best_params.items():
-                                print(f"    {key}: {value}")
-                        
-                        # Create updated config with best parameters for this method
-                        updated_config = GAConfig(
-                            population_size=best_params['population_size'],
-                            max_generations=best_params['max_generations'],
-                            crossover_rate=best_params['crossover_rate'],
-                            mutation_rate=best_params['mutation_rate'],
-                            elitism_rate=best_params.get('elitism_rate', method_config.elitism_rate),
-                            tournament_size=best_params.get('tournament_size', method_config.tournament_size),
-                            selection_method=method_config.selection_method,  # Keep method-specific
-                            crossover_method=method_config.crossover_method,   # Keep method-specific
-                            mutation_method=method_config.mutation_method,     # Keep method-specific
-                            representation=method_config.representation,      # Keep method-specific
-                            verbose=method_config.verbose
-                        )
-                        
-                        updated_methods.append((method_name, updated_config))
-                        print(f"  ✓ Method {idx}/{total_methods} tuned and ready")
-                    
-                    method_combinations = updated_methods
-                    print(f"\n{'='*80}")
-                    print(f"ALL {len(method_combinations)} METHODS TUNED AND READY")
-                    print(f"{'='*80}\n")
-            else:
-                print("Warning: No method combinations to tune!")
-        else:
-            print("\n" + "="*80)
-            print("WARNING: Optuna tuning is DISABLED in config!")
-            print("="*80)
-            print("Tuning is recommended to find optimal parameters for each method.")
-            print("Set optuna.enabled: true in config.yaml to enable tuning.")
-            print("Using default parameters from config (may not be optimal).")
-            print("="*80 + "\n")
-        
-        # Run experiments
-        print("\n" + "="*80)
-        print("STEP 2: RUNNING EXPERIMENTS WITH OPTIMIZED PARAMETERS")
-        print("="*80)
-        # eval_config already defined above
-        save_history = eval_config.get('save_convergence_history', True)
-        parallel = eval_config.get('parallel', False)
-        n_jobs = eval_config.get('n_jobs', None)
-        parallel_methods = eval_config.get('parallel_methods', False)  # Enable parallel methods execution
-        
-        evaluator = ExperimentEvaluator(
-            instance,
-            n_runs=eval_config.get('n_runs', 10),
-            save_history=save_history,
-            history_dir=instance_convergence_dir,
-            checkpoint_manager=checkpoint_manager,
-            parallel=parallel,
-            n_jobs=n_jobs,
-            parallel_methods=parallel_methods
-        )
-        
-        comparison_results = evaluator.compare_methods(method_combinations)
-        
-        # Cleanup parallel executor resources
-        evaluator.cleanup()
-        
-        # Load existing results if available (for summary)
-        results_file = os.path.join(instance_results_dir, f"{instance.name}_results.json")
-        existing_results = {}
+        # Try to load existing results first
+        instance_results = {}
         if os.path.exists(results_file):
             try:
                 with open(results_file, 'r') as f:
-                    existing_results = json.load(f)
+                    instance_results = json.load(f)
             except:
                 pass
         
-        # Merge with new results
-        if comparison_results:
-            # Update with new results
-            for method, metrics in comparison_results.items():
-                existing_results[method] = {
-                    'mean_fitness': float(metrics.mean_fitness),
-                    'std_fitness': float(metrics.std_fitness),
-                    'mean_runtime': float(metrics.mean_runtime),
-                    'std_runtime': float(metrics.std_runtime),
-                    'best_fitness': float(metrics.best_fitness),
-                    'worst_fitness': float(metrics.worst_fitness),
-                }
-            all_results[instance.name] = comparison_results
-            processed_instances += 1
-        elif existing_results:
-            # No new results but have existing - use those for summary
-            all_results[instance.name] = existing_results
-        
-        # Mark instance as complete if all methods are done
-        total_methods = len(method_combinations)
-        completed_methods = checkpoint_manager.state['completed_methods'].get(instance.name, [])
-        
-        # Only mark complete if:
-        # 1. total_methods > 0 (there are methods to test)
-        # 2. All methods are actually completed
-        if total_methods > 0 and len(completed_methods) >= total_methods:
-            checkpoint_manager.mark_instance_complete(instance.name)
-            print(f"\n[OK] Instance {instance.name} completed: {len(completed_methods)}/{total_methods} methods")
-        elif total_methods == 0:
-            # All methods were skipped (already complete from checkpoint)
-            # Check if instance is actually complete by checking all methods in checkpoint
-            all_methods_complete = len(completed_methods) > 0
-            if all_methods_complete:
-                # Verify instance is truly complete - don't mark if no methods were run
-                print(f"\n[INFO] Instance {instance.name}: All methods already completed in checkpoint ({len(completed_methods)} methods)")
-                # Don't mark as complete here - let it be marked when methods are actually verified
-        
-        # Save results (update with any new data)
-        # If no new results and no existing results, but methods are complete in checkpoint,
-        # generate results from checkpoint/convergence files
-        if not comparison_results and not existing_results:
-            completed_methods = checkpoint_manager.state.get('completed_methods', {}).get(instance.name, [])
-            if completed_methods:
-                print(f"\nAll methods already complete in checkpoint. Generating results from checkpoint/convergence files...")
-                generated_results = generate_results_from_checkpoint(
-                    checkpoint_manager, instance.name, instance_results_dir
-                )
-                if generated_results:
-                    existing_results = generated_results
-                    print(f"  Generated results for {len(generated_results)} methods from checkpoint/convergence files")
-        
-        if comparison_results or existing_results:
-            # Merge results
-            results_dict = existing_results.copy() if existing_results else {}
+        for method_name, ga_config in method_combinations:
+            # Skip if already completed and have results
+            if checkpoint.is_method_complete(instance.name, method_name):
+                if method_name in instance_results:
+                    continue  # Already have results
             
-            # Add/update with new results
-            if comparison_results:
-                for method, metrics in comparison_results.items():
-                    results_dict[method] = {
-                        'mean_fitness': float(metrics.mean_fitness),
-                        'std_fitness': float(metrics.std_fitness),
-                        'mean_runtime': float(metrics.mean_runtime),
-                        'std_runtime': float(metrics.std_runtime),
-                        'best_fitness': float(metrics.best_fitness),
-                        'worst_fitness': float(metrics.worst_fitness),
-                    }
-            
-            with open(results_file, 'w') as f:
-                json.dump(results_dict, f, indent=2)
-            print(f"\nResults saved to {results_file} ({len(results_dict)} methods)")
+            try:
+                result = evaluator.evaluate_combination(method_name, ga_config)
+                if result:  # None if already completed
+                    # Save immediately after each method completes
+                    _save_result_to_json(results_file, method_name, result)
+                    instance_results[method_name] = result
+            except Exception as e:
+                print(f"  ERROR evaluating {method_name}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
         
-        # Visualizations (only if we have results)
-        # Use comparison_results if available, otherwise use existing_results
-        results_for_plotting = comparison_results if comparison_results else None
-        if not results_for_plotting and existing_results:
-            # Convert existing_results to ComparisonMetrics for plotting
-            from src.evaluation.metrics import ComparisonMetrics
-            results_for_plotting = {}
-            for method_name, metrics_dict in existing_results.items():
-                results_for_plotting[method_name] = ComparisonMetrics(
-                    method_name=method_name,
-                    mean_fitness=metrics_dict.get('mean_fitness', 0.0),
-                    std_fitness=metrics_dict.get('std_fitness', 0.0),
-                    mean_runtime=metrics_dict.get('mean_runtime', 0.0),
-                    std_runtime=metrics_dict.get('std_runtime', 0.0),
-                    best_fitness=metrics_dict.get('best_fitness', 0.0),
-                    worst_fitness=metrics_dict.get('worst_fitness', 0.0),
-                    mean_convergence=0.0,
-                    std_convergence=0.0,
-                    mean_diversity=0.0,
-                    std_diversity=0.0,
-                    success_rate=1.0
-                )
+        # Check if all methods complete
+        completed_count = len([m for m in method_combinations 
+                              if checkpoint.is_method_complete(instance.name, m[0])])
+        if completed_count >= len(method_combinations):
+            checkpoint.mark_instance_complete(instance.name)
+            print(f"\n✓ Instance {instance.name} completed: {completed_count}/{len(method_combinations)} methods")
         
-        if config.get('evaluation', {}).get('save_plots', True) and results_for_plotting:
-            plotter = ResultPlotter()
-            
-            # Check if plots already exist
-            plot_files = [
-                os.path.join(instance_plots_dir, f"{instance.name}_fitness_comparison.png"),
-                os.path.join(instance_plots_dir, f"{instance.name}_runtime_comparison.png"),
-                os.path.join(instance_plots_dir, f"{instance.name}_heatmap.png"),
-            ]
-            
-            if not all(os.path.exists(f) for f in plot_files):
-                # Comparison bar chart
-                plotter.plot_comparison_bar(
-                    results_for_plotting,
-                    metric='mean_fitness',
-                    save_path=plot_files[0],
-                    show=False
-                )
-                
-                plotter.plot_comparison_bar(
-                    results_for_plotting,
-                    metric='mean_runtime',
-                    save_path=plot_files[1],
-                    show=False
-                )
-                
-                # Heatmap
-                plotter.plot_comparison_heatmap(
-                    results_for_plotting,
-                    save_path=plot_files[2],
-                    show=False
-                )
-                print(f"  Plots generated: {len([f for f in plot_files if os.path.exists(f)])}/{len(plot_files)}")
-            else:
-                print(f"  Plots already exist, skipping")
-        elif config.get('evaluation', {}).get('save_plots', True):
-            print(f"  Skipping plots (no results to visualize)")
-        
-        # Visualize best route (only if we have results)
-        if config.get('evaluation', {}).get('save_routes', True) and comparison_results:
-            # Find best method
-            best_method = min(comparison_results.items(), key=lambda x: x[1].mean_fitness)[0]
-            best_config = next(config for name, config in method_combinations if name == best_method)
-            
-            # Run once more to get best route
-            ga = GeneticAlgorithm(instance, best_config)
-            result = ga.run()
-            
-            route_plotter = RoutePlotter(instance)
-            route_plotter.plot_routes(
-                result.best_routes,
-                title=f"Best Solution - {instance.name} ({best_method})",
-                save_path=os.path.join(instance_routes_dir, f"{instance.name}_best_route.png"),
-                show=False
-            )
-        elif config.get('evaluation', {}).get('save_routes', True):
-            print(f"  Skipping route visualization (no new results)")
+        # Final summary (results already saved incrementally)
+        print(f"\nResults file: {results_file}")
+        all_results[instance.name] = instance_results
     
-    # Summary across all instances
+    # Summary
     print(f"\n{'='*80}")
-    print("SUMMARY ACROSS ALL INSTANCES")
+    print("SUMMARY")
     print(f"{'='*80}")
-    
-    if not all_results:
-        print("\nNo results to summarize. Please ensure:")
-        print("1. Solomon benchmark datasets are downloaded")
-        print("2. Dataset files are placed in data/solomon/ directory")
-        print("3. Instance names in config.yaml match the actual file names")
-        print("\nYou can use test_instance.txt for testing:")
-        print("  python run_experiment.py")
-        return
-    
-    # Aggregate results
-    summary_results = {}
-    for instance_name, results in all_results.items():
-        for method_name, metrics in results.items():
-            if method_name not in summary_results:
-                summary_results[method_name] = {
-                    'fitnesses': [],
-                    'runtimes': [],
-                }
-            summary_results[method_name]['fitnesses'].append(metrics.mean_fitness)
-            summary_results[method_name]['runtimes'].append(metrics.mean_runtime)
-    
-    # Calculate averages
-    summary_metrics = {}
-    for method_name, data in summary_results.items():
-        summary_metrics[method_name] = ComparisonMetrics(
-            method_name=method_name,
-            mean_fitness=np.mean(data['fitnesses']),
-            std_fitness=np.std(data['fitnesses']),
-            mean_runtime=np.mean(data['runtimes']),
-            std_runtime=np.std(data['runtimes']),
-            mean_convergence=0.0,
-            std_convergence=0.0,
-            mean_diversity=0.0,
-            std_diversity=0.0,
-            best_fitness=np.min(data['fitnesses']),
-            worst_fitness=np.max(data['fitnesses']),
-            success_rate=1.0
-        )
-    
-    # Print summary
-    print("\nAverage Performance Across All Instances:")
-    print(f"{'Method':<40} {'Mean Fitness':<15} {'Mean Runtime':<15}")
-    print("-" * 70)
-    for method_name, metrics in sorted(summary_metrics.items(), 
-                                      key=lambda x: x[1].mean_fitness):
-        print(f"{method_name:<40} {metrics.mean_fitness:>12.2f} {metrics.mean_runtime:>12.2f}s")
-    
-    # Save summary
-    summary_file = os.path.join(output_config.get('results_dir', 'results'), 'summary.json')
-    summary_dict = {
-        method: {
-            'mean_fitness': float(m.mean_fitness),
-            'std_fitness': float(m.std_fitness),
-            'mean_runtime': float(m.mean_runtime),
-            'std_runtime': float(m.std_runtime),
-        }
-        for method, m in summary_metrics.items()
-    }
-    
-    with open(summary_file, 'w') as f:
-        json.dump(summary_dict, f, indent=2)
-    print(f"\nSummary saved to {summary_file}")
-    
-    print("\n" + "="*80)
-    print("Comparison study completed!")
+    print(f"Processed {len(all_results)} instances")
+    print(f"Total combinations tested: {len(method_combinations)}")
+    print(f"End time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*80)
 
 
 def main():
     """Main entry point"""
-    parser = argparse.ArgumentParser(description='GA Method Comparison Study')
+    parser = argparse.ArgumentParser(description='GA Method Comparison Study (Simplified)')
     parser.add_argument('--config', type=str, default='config.yaml',
                        help='Path to configuration file')
+    parser.add_argument('--instance', type=str, default=None,
+                       help='Process only this instance (e.g., C101, C102). If not specified, process all instances.')
     
     args = parser.parse_args()
     
@@ -976,7 +325,7 @@ def main():
     config = load_config(args.config)
     
     # Run comparison study
-    run_comparison_study(config)
+    run_comparison_study(config, instance_name=args.instance)
 
 
 if __name__ == '__main__':

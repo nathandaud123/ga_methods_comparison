@@ -1,38 +1,19 @@
-# Genetic Algorithm Comparison Study Configuration
-
-# Multi-Device Configuration (for parallel execution across multiple devices)
-device:
-  device_id: null  # Set to unique ID (e.g., "device1", "laptop", "server1") for multi-device mode
-  total_devices: 1  # Total number of devices running in parallel
-  # If device_id is set and total_devices > 1, each device will work on different instances
-  # Distribution: instances are assigned using modulo (device 1 gets 0, N, 2N...; device 2 gets 1, N+1...)
+# Genetic Algorithm Comparison Study Configuration (Simplified)
 
 # Dataset Configuration
 dataset:
   base_path: "data/solomon"
-  # Instances can be specified as:
-  # - Simple names (will auto-search in subfolders): "C101", "R101"
-  # - Full paths: "C1/C101.csv", "R1/R101.csv"
-  # - Empty list [] will auto-discover ALL CSV files from subfolders
-  instances: []  # Empty = auto-discover all datasets from subfolders
-  # Or specify specific instances:
-  # instances:
-  #   - "C101"
-  #   - "R101"
-  #   - "RC101"
-  types:
-    - "C"  # Clustered
-    - "R"  # Random
-    - "RC" # Random-Clustered
+  # Empty instances list = auto-discover all CSV files from subfolders
+  instances: []
 
 # GA Parameters
 ga:
-  population_size: 100
+  population_size: 80
   max_generations: 500
-  elitism_rate: 0.1
-  crossover_rate: 0.8
-  mutation_rate: 0.1
-  
+  crossover_rate: 0.9
+  mutation_rate: 0.3
+  tournament_size: 3
+
 # Representations to test
 representations:
   - "permutation"  # Primary for VRP
@@ -48,7 +29,7 @@ selection_methods:
   - "elitism"
   - "boltzmann"
 
-# Crossover methods (will be filtered by representation)
+# Crossover methods (filtered by representation)
 crossover_methods:
   permutation:
     - "pmx"
@@ -69,7 +50,7 @@ crossover_methods:
     - "blx_alpha"
     - "flat"
 
-# Mutation methods (will be filtered by representation)
+# Mutation methods (filtered by representation)
 mutation_methods:
   permutation:
     - "swap"
@@ -86,60 +67,18 @@ mutation_methods:
     - "polynomial"
     - "uniform"
 
-# Optuna Tuning Configuration
-optuna:
-  enabled: true  # ALWAYS enabled - tuning runs FIRST before experiments
-  n_trials: 50
-  timeout: 3600  # seconds
-  save_history: true  # Save all trial results to CSV
-  direction: "minimize"
-  study_name: "ga_comparison"
-  parameters:
-    population_size:
-      type: "int"
-      low: 50
-      high: 200
-    crossover_rate:
-      type: "float"
-      low: 0.6
-      high: 0.95
-    mutation_rate:
-      type: "float"
-      low: 0.05
-      high: 0.3
-    tournament_size:
-      type: "int"
-      low: 2
-      high: 10
-
 # Evaluation Configuration
 evaluation:
-  metrics:
-    - "fitness"
-    - "runtime"
-    - "convergence"
-    - "diversity"
-    - "solution_quality"
-  n_runs: 5  # Number of independent runs (reduced for full dataset run)
-  save_results: true
-  save_plots: true
-  save_routes: true
-  save_convergence_history: true  # Save convergence history to CSV for each method
-  parallel: true  # Enable parallel execution
-  n_jobs: null  # Number of parallel workers (null = auto: CPU_COUNT - 1)
-  parallel_methods: false  # Enable parallel execution for multiple methods (recommended for HPC/AI Center)
-  # With parallel_methods: true, all tasks (methods × runs) execute in one global pool
-  # Example: 60 workers can run 60 tasks simultaneously (mix of methods and runs)
-  # Recommended for AI Center/HPC with many cores (e.g., 60-250 workers)
+  n_runs: 5  # Number of independent runs per combination
+  n_jobs: 5  # Number of parallel workers (null/1 = sequential, 0 = auto, >1 = parallel)
+  # Examples:
+  #   n_jobs: null  or  n_jobs: 1  -> Sequential execution
+  #   n_jobs: 0  -> Auto: use all CPU cores - 1
+  #   n_jobs: 4  -> Use 4 parallel workers
+  #   n_jobs: 8  -> Use 8 parallel workers
 
 # Output Configuration
 output:
   results_dir: "results"
-  experiments_dir: "results/experiments"
-  plots_dir: "results/plots"
-  routes_dir: "results/routes"
-  convergence_dir: "results/convergence"  # Directory for CSV convergence history
-  tuning_dir: "results/tuning"  # Directory for Optuna tuning results CSV
-  checkpoint_file: "results/checkpoint.json"  # Checkpoint file for resuming
-  verbose: true
+  verbose: false  # Set to true for detailed progress
 

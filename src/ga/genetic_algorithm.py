@@ -17,7 +17,7 @@ class GAConfig:
     max_generations: int = 500
     crossover_rate: float = 0.8
     mutation_rate: float = 0.1
-    elitism_rate: float = 0.1
+    elitism_rate: float = 0.0  # Disabled - no elitism
     tournament_size: int = 3
     selection_method: str = "tournament"
     crossover_method: str = "pmx"
@@ -218,13 +218,8 @@ class GeneticAlgorithm:
         
         # Main loop
         for generation in range(self.config.max_generations):
-            # Elitism: preserve best individuals
-            elite_size = int(self.config.population_size * self.config.elitism_rate)
-            elite_indices = np.argsort(fitness)[:elite_size]
-            elite = [population[i].copy() for i in elite_indices]
-            
-            # Create new population
-            new_population = elite.copy()
+            # Create new population (no elitism)
+            new_population = []
             
             # Generate offspring
             while len(new_population) < self.config.population_size:

@@ -1,6 +1,22 @@
-# Genetic Algorithm Method Comparison Study
+# Genetic Algorithm Method Comparison Study (Simplified)
 
-Comprehensive comparison study of Genetic Algorithm operators (representation, selection, crossover, mutation) for Vehicle Routing Problem using Solomon benchmark datasets.
+Sistem perbandingan operator Genetic Algorithm untuk Vehicle Routing Problem menggunakan dataset benchmark Solomon.
+
+## 🎯 Fitur Utama
+
+1. **Semua Kombinasi**: Semua kombinasi dari representation, selection, crossover, dan mutation
+2. **5 Runs per Kombinasi**: Setiap kombinasi dijalankan 5 kali untuk statistik yang reliable
+3. **Simpan Setiap Generasi**: History fitness dan diversity disimpan untuk setiap run
+4. **Rata-rata per Generasi**: Rata-rata dari 5 runs dihitung dan disimpan per generasi
+5. **Semua Instance**: Semua kombinasi diuji pada semua instance Solomon
+
+## 📋 Skenario Eksperimen
+
+1. **Generate Kombinasi**: Semua kombinasi representation × selection × crossover × mutation
+2. **Run 5x**: Setiap kombinasi dijalankan 5 kali (independent runs)
+3. **Simpan History**: Setiap generasi dari setiap run disimpan
+4. **Hitung Rata-rata**: Rata-rata per generasi dari 5 runs dihitung
+5. **Simpan Hasil**: Hasil disimpan dalam format CSV dan JSON
 
 ## 🚀 Quick Start
 
@@ -8,266 +24,180 @@ Comprehensive comparison study of Genetic Algorithm operators (representation, s
 # Install dependencies
 pip install -r requirements.txt
 
-# Run with all datasets (supports checkpoint/resume!)
+# Run dengan semua datasets (sequential)
 python main.py --config config.yaml
 
-# Or use the Python background script
-python run_full_experiment.py
+# Run dengan parallel execution (4 workers)
+# Edit config.yaml: n_jobs: 4
+python main.py --config config.yaml
 
-# Or use PowerShell script
-.\start_experiment.ps1
+# Run dengan auto-detect CPU cores
+# Edit config.yaml: n_jobs: 0
+python main.py --config config.yaml
 
-# Check progress
-python check_progress.py
-
-# Quick status check
-python status_check.py
-
-# Monitor in real-time
-python monitor_experiment.py
-
-# Clear checkpoint to restart
-python clear_checkpoint.py
+# Run instance tertentu saja
+python main.py --config config.yaml --instance C101
+python main.py --config config.yaml --instance C102
 ```
 
-## ⚡ Parallel Execution (HPC Support)
+## 🔀 Multi-Terminal / Multi-Instance Execution
 
-**NEW**: Sistem sekarang mendukung **parallel execution** untuk high-performance computing!
+Untuk menjalankan beberapa instance secara paralel di terminal berbeda (misalnya di AI Center):
 
-### Single Device (Multi-core)
-- ✅ **Thread-safe checkpointing** - No race conditions
-- ✅ **Automatic core detection** - Uses all available CPU cores
-- ✅ **Linear speedup** - ~N cores = ~Nx faster
-- ✅ **Safe file I/O** - File locking prevents conflicts
+### 1. Run Instance Spesifik
 
-**Enable in `config.yaml`:**
+Setiap terminal menjalankan instance yang berbeda:
+
+```bash
+# Terminal 1
+python main.py --config config.yaml --instance C101
+
+# Terminal 2
+python main.py --config config.yaml --instance C102
+
+# Terminal 3
+python main.py --config config.yaml --instance C103
+```
+
+**Catatan:**
+- Setiap instance akan menggunakan checkpoint file terpisah: `checkpoint_<instance>.json`
+- Hasil tetap disimpan di `results/<instance>/<instance>_results.json`
+- Tidak ada konflik karena setiap instance menggunakan checkpoint file sendiri
+
+### 2. Merge Checkpoints
+
+Setelah semua instance selesai, merge checkpoint files menjadi satu:
+
+```bash
+# Merge semua checkpoint_*.json menjadi checkpoint.json
+python merge_checkpoints.py --results-dir results
+
+# Atau dengan output file custom
+python merge_checkpoints.py --results-dir results --output results/checkpoint_merged.json
+```
+
+**Fungsi merge:**
+- Menggabungkan semua `checkpoint_<instance>.json` menjadi satu `checkpoint.json`
+- Menggabungkan `completed_methods` dari semua instance
+- Menggabungkan `completed_instances` dari semua instance
+- Menampilkan summary per instance
+
+## ✅ Checkpoint & Resume
+
+Sistem mendukung checkpoint/resume:
+- **Auto-save**: Setelah setiap kombinasi selesai
+- **Auto-resume**: Jika terminate, jalankan lagi dan akan lanjut dari yang belum selesai
+- **Skip completed**: Kombinasi yang sudah selesai akan di-skip otomatis
+
+**Checkpoint files:**
+- **All instances mode**: `results/checkpoint.json`
+- **Single instance mode** (`--instance`): `results/checkpoint_<instance>.json`
+  - Contoh: `checkpoint_C101.json`, `checkpoint_C102.json`
+  - Setiap instance memiliki checkpoint file sendiri (tidak numpuk)
+
+## ⚡ Parallel Execution
+
+Sistem mendukung parallel execution untuk mempercepat proses:
+
+**Konfigurasi di `config.yaml`:**
 ```yaml
 evaluation:
-  parallel: true  # Enable parallel execution
-  n_jobs: null    # Auto (CPU_COUNT - 1), or set manually (e.g., 8)
+  n_jobs: null  # Sequential (default)
+  # n_jobs: 1   # Sequential
+  # n_jobs: 0   # Auto: use all CPU cores - 1
+  # n_jobs: 4   # Use 4 parallel workers
+  # n_jobs: 8   # Use 8 parallel workers
 ```
 
-### Multi-Device (Distributed)
-- ✅ **True distributed execution** - Multiple devices, no conflicts
-- ✅ **Automatic workload distribution** - Each device gets different instances
-- ✅ **Shared checkpoint** - Progress tracked across all devices
-- ✅ **Linear speedup** - N devices = ~Nx faster
+**Cara kerja:**
+- `n_jobs: null` atau `1`: Sequential execution (1 kombinasi per waktu)
+- `n_jobs: 0`: Auto-detect CPU cores (gunakan semua core - 1)
+- `n_jobs: N` (N > 1): Gunakan N parallel workers
 
-**Setup:**
-```bash
-# 1. Setup device configs
-python setup_multi_device.py --total-devices 3
+**Contoh:**
+- 5 runs per kombinasi dengan `n_jobs: 5` → 5 runs dijalankan parallel
+- Speedup: ~Nx faster (dengan overhead minimal)
 
-# 2. Configure each device in config.yaml
-device:
-  device_id: "device1"  # Unique per device
-  total_devices: 3
-
-# 3. Run on each device
-python main.py --config config.yaml
-```
-
-See `PARALLEL_USAGE.md` for single-device guide.
-See `MULTI_DEVICE_SETUP.md` for multi-device guide.
-See `SETUP_2_DEVICES.md` for quick setup (Laptop + AI Center).
-See `QUICK_ANSWER.md` for quick answer: "Apakah aman run bersamaan?"
-
-## ✅ Checkpoint & Resume Feature
-
-**IMPORTANT**: The system now supports checkpoint/resume functionality!
-
-- ✅ **Auto-save checkpoint** after each GA run
-- ✅ **Resume from last checkpoint** if interrupted
-- ✅ **Skip completed methods** automatically  
-- ✅ **Resume partial runs** - continues from last incomplete run
-- ✅ **Safe to terminate** - laptop can sleep/hibernate anytime
-- ✅ **No data loss** - results saved separately from checkpoint
-
-### How It Works
-
-1. **Checkpoint saved automatically** after each GA execution
-2. **If terminated** (Ctrl+C, sleep, etc.), simply restart:
-   ```bash
-   python main.py --config config.yaml
-   ```
-3. **System automatically**:
-   - ✅ Skips completed instances
-   - ✅ Skips completed methods  
-   - ✅ Resumes from last incomplete run
-   - ✅ Shows checkpoint status on startup
-
-### Checkpoint Management
-
-```bash
-# Check progress
-python check_progress.py
-
-# Clear checkpoint for specific instance
-python clear_checkpoint.py C101
-
-# Clear entire checkpoint (restart from beginning)
-python clear_checkpoint.py
-```
-
-Checkpoint file: `results/checkpoint.json`
-
-## 📊 Status
-
-- ✅ **GitHub Repository**: [ga_methods_comparison](https://github.com/NathanDaud123/ga_methods_comparison)
-- ✅ **56 Solomon Instances** ready (C1, C2, R1, R2, RC1, RC2)
-- ✅ **354 Method Combinations** to test per instance
-- ✅ **Checkpoint/Resume** support
-- ✅ All results saved to CSV/JSON
-
-## 📄 Paper Structure Template
-
-A comprehensive paper structure template is available in `PAPER_STRUCTURE.md`:
-- Complete outline from Title to Conclusion
-- Section-by-section guidelines
-- Writing tips and recommendations
-- Table and figure suggestions
-- Word count guidelines
-
-Perfect for organizing your research paper on GA operator comparison!
-
-## 📁 Project Structure
+## 📁 Struktur Output
 
 ```
-ga_method_comparison/
-├── README.md
-├── requirements.txt
-├── config.yaml              # Main config (all datasets)
-├── config_test.yaml         # Quick test config
-├── main.py                  # Main experiment runner (with checkpoint)
-├── check_progress.py        # Check experiment progress
-├── clear_checkpoint.py      # Clear checkpoint
-├── run_experiment.py        # Quick test
-├── run_full_experiment.py   # Full run with logging
-├── src/
-│   ├── data/
-│   │   └── solomon_parser.py    # Supports CSV format
-│   ├── representation/          # Binary, Real-valued, Permutation
-│   ├── selection/               # 7 methods
-│   ├── crossover/               # 16+ methods
-│   ├── mutation/                # 14+ methods
-│   ├── ga/
-│   │   └── genetic_algorithm.py
-│   ├── evaluation/
-│   │   ├── metrics.py
-│   │   ├── evaluator.py         # Saves CSV convergence + checkpoint
-│   │   └── checkpoint.py        # Checkpoint management
-│   ├── visualization/
-│   │   ├── route_plotter.py
-│   │   └── result_plotter.py
-│   └── tuning/
-│       └── optuna_tuner.py      # Saves CSV tuning history
-├── data/solomon/
-│   ├── C1/  (9 instances)
-│   ├── C2/  (8 instances)
-│   ├── R1/  (12 instances)
-│   ├── R2/  (11 instances)
-│   ├── RC1/ (8 instances)
-│   └── RC2/ (8 instances)
-└── results/
-    ├── checkpoint.json          # Checkpoint file (auto-created)
-    ├── experiments/{instance}/  # JSON results
-    ├── plots/{instance}/        # Comparison charts
-    ├── routes/{instance}/       # Route visualizations
-    ├── convergence/{instance}/  # CSV per method
-    └── tuning/{instance}/       # CSV Optuna results
+results/
+├── {instance_name}/
+│   ├── {method_name}_convergence.csv  # History per run + average
+│   └── {instance_name}_results.json   # Summary results
 ```
 
-## 🎯 Features
+### Format CSV Convergence
 
-### Representations
-- **Binary**: Bit string encoding
-- **Real-valued**: Continuous value encoding
-- **Permutation**: Order-based encoding (primary for VRP)
+Setiap file `{method_name}_convergence.csv` berisi:
+- `generation`: Nomor generasi (1, 2, 3, ...)
+- `fitness_run_1` sampai `fitness_run_5`: Fitness per run per generasi
+- `diversity_run_1` sampai `diversity_run_5`: Diversity per run per generasi
+- `fitness_average`: Rata-rata fitness per generasi (dari 5 runs)
+- `diversity_average`: Rata-rata diversity per generasi (dari 5 runs)
 
-### Selection Methods (7)
-- Roulette Wheel Selection
-- Tournament Selection
-- Rank Selection
-- Stochastic Universal Sampling (SUS)
-- Elitism Selection
-- Stairwise Selection (SWS)
-- Boltzmann Selection
+### Format JSON Results
 
-### Crossover Operators (16+)
-- **Permutation**: PMX, OX, CX, OBX, POS, ERX, SCX
-- **Binary**: Single-point, Two-point, Multi-point, Uniform, Shuffle, Arithmetic
-- **Real-valued**: SBX, BLX-α, Flat
-
-### Mutation Operators (14+)
-- **Permutation**: Swap, Insert, Inversion, Scramble, Displacement, Exchange
-- **Binary**: Bit Flip, Uniform, Interchanging, Reversing
-- **Real-valued**: Gaussian, Polynomial, Uniform, Non-uniform
-
-## 📝 Output Files
-
-### Checkpoint File
-- `results/checkpoint.json`: Tracks completed instances, methods, and runs
-- Auto-saved after each run
-- Safe to terminate anytime
-
-### Convergence CSV
-Each method saves convergence history:
-- `generation`: Generation number
-- `fitness_run_1..N`: Fitness per run
-- `diversity_run_1..N`: Diversity per run
-- `fitness_mean/std/min/max`: Statistics
-- `diversity_mean/std`: Diversity statistics
-
-### Optuna Tuning CSV
-When tuning enabled:
-- `{instance}_optuna_tuning.csv`: All trials with parameters
-- `{instance}_optuna_tuning_summary.csv`: Summary statistics
-
-## ⚙️ Configuration
-
-### Run All Datasets
-```yaml
-dataset:
-  instances: []  # Auto-discover all CSV files
+Setiap file `{instance_name}_results.json` berisi:
+```json
+{
+  "method_name": {
+    "method_name": "...",
+    "average_fitness_history": [...],  // Rata-rata per generasi
+    "average_diversity_history": [...],
+    "best_fitness": 1234.56,
+    "mean_fitness": 1234.56,
+    "std_fitness": 12.34,
+    "runtime": 123.45,
+    "n_runs": 5
+  }
+}
 ```
 
-### Run Specific Instances
-```yaml
-dataset:
-  instances:
-    - "C101"
-    - "R101"
-    - "RC101"
+## ⚙️ Konfigurasi
+
+Edit `config.yaml` untuk mengubah:
+- GA parameters (population_size, max_generations, dll)
+- Representations, selection methods, crossover methods, mutation methods
+- Number of runs per combination (default: 5)
+
+## 📊 Contoh Output
+
+```
+================================================================================
+Processing instance: C101
+================================================================================
+Instance: C101
+Type: C
+Customers: 100
+Capacity: 200.0
+
+============================================================
+Evaluating: permutation_tournament_pmx_swap
+============================================================
+  Run 1/5... Best: 1234.56
+  Run 2/5... Best: 1235.12
+  Run 3/5... Best: 1234.89
+  Run 4/5... Best: 1235.45
+  Run 5/5... Best: 1234.23
+  Saved convergence history to results/C101/permutation_tournament_pmx_swap_convergence.csv
+  Average final fitness: 1234.85 ± 0.45
+  Best fitness: 1234.23
+  Runtime: 45.67s
 ```
 
-### Adjust Parameters
-```yaml
-ga:
-  population_size: 100
-  max_generations: 500
-  n_runs: 5  # Independent runs per method
-```
+## 🔍 Analisis Data
 
-## 📊 Expected Runtime
+Data yang disimpan dapat dianalisis untuk:
+- Convergence behavior per kombinasi
+- Perbandingan performa antar kombinasi
+- Statistical significance testing
+- Visualization convergence curves
 
-- **56 instances** × **354 methods** × **5 runs** = **99,120 GA executions**
-- Estimated: ~3-5 days on typical hardware
-- Each GA run: ~1-2 minutes (500 generations, 100 population)
+## 📝 Catatan
 
-**With checkpoint, you can safely interrupt and resume anytime!**
+- Sistem ini lebih sederhana dari versi sebelumnya
+- Tidak ada checkpoint/resume (untuk kesederhanaan)
+- Tidak ada parallel execution (dapat ditambahkan jika perlu)
+- Fokus pada data collection yang lengkap untuk analisis
 
-## 🔍 Analysis
-
-All results are saved in structured format for easy analysis:
-- JSON for programmatic access
-- CSV for Excel/Python analysis
-- PNG for visual inspection
-
-## 📚 Citation
-
-If you use this code, please cite relevant papers from the comparison study document.
-
-## 🔗 Links
-
-- GitHub: https://github.com/NathanDaud123/ga_methods_comparison
-- Solomon Benchmark: http://web.cba.neu.edu/~msolomon/problems.htm
