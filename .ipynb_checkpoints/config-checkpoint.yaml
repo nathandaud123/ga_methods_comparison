@@ -1,0 +1,84 @@
+# Genetic Algorithm Comparison Study Configuration (Simplified)
+
+# Dataset Configuration
+dataset:
+  base_path: "data/solomon"
+  # Empty instances list = auto-discover all CSV files from subfolders
+  instances: []
+
+# GA Parameters
+ga:
+  population_size: 80
+  max_generations: 500
+  crossover_rate: 0.9
+  mutation_rate: 0.3
+  tournament_size: 3
+
+# Representations to test
+representations:
+  - "permutation"  # Primary for VRP
+  - "binary"
+  - "real_valued"
+
+# Selection methods to test
+selection_methods:
+  - "roulette_wheel"
+  - "tournament"
+  - "rank"
+  - "stochastic_universal"
+  - "elitism"
+  - "boltzmann"
+
+# Crossover methods (filtered by representation)
+crossover_methods:
+  permutation:
+    - "pmx"
+    - "ox"
+    - "cx"
+    - "obx"
+    - "pos"
+    - "erx"
+    - "scx"
+  binary:
+    - "single_point"
+    - "two_point"
+    - "multi_point"
+    - "uniform"
+    - "shuffle"
+  real_valued:
+    - "sbx"
+    - "blx_alpha"
+    - "flat"
+
+# Mutation methods (filtered by representation)
+mutation_methods:
+  permutation:
+    - "swap"
+    - "insert"
+    - "inversion"
+    - "scramble"
+    - "displacement"
+  binary:
+    - "bit_flip"
+    - "uniform"
+    - "interchanging"
+  real_valued:
+    - "gaussian"
+    - "polynomial"
+    - "uniform"
+
+# Evaluation Configuration
+evaluation:
+  n_runs: 5  # Number of independent runs per combination
+  n_jobs: 5  # Number of parallel workers (null/1 = sequential, 0 = auto, >1 = parallel)
+  # Examples:
+  #   n_jobs: null  or  n_jobs: 1  -> Sequential execution
+  #   n_jobs: 0  -> Auto: use all CPU cores - 1
+  #   n_jobs: 4  -> Use 4 parallel workers
+  #   n_jobs: 8  -> Use 8 parallel workers
+
+# Output Configuration
+output:
+  results_dir: "results"
+  verbose: false  # Set to true for detailed progress
+
