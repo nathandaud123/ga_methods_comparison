@@ -1,52 +1,53 @@
-# Genetic Algorithm Method Comparison Study (Simplified)
+# Genetic Algorithm Operator Comparison for VRPTW
 
-Sistem perbandingan operator Genetic Algorithm untuk Vehicle Routing Problem menggunakan dataset benchmark Solomon.
+A simplified experimental framework for comparing Genetic Algorithm (GA) operator configurations on the Vehicle Routing Problem with Time Windows (VRPTW) using the Solomon benchmark dataset (100 customers per instance).
 
-## 🎯 Fitur Utama
+## Main Features
 
-1. **Semua Kombinasi**: Semua kombinasi dari representation, selection, crossover, dan mutation
-2. **5 Runs per Kombinasi**: Setiap kombinasi dijalankan 5 kali untuk statistik yang reliable
-3. **Simpan Setiap Generasi**: History fitness dan diversity disimpan untuk setiap run
-4. **Rata-rata per Generasi**: Rata-rata dari 5 runs dihitung dan disimpan per generasi
-5. **Semua Instance**: Semua kombinasi diuji pada semua instance Solomon
+1. **Full Operator Grid**: Exhaustive combinations of representation, selection, crossover, and mutation operators.
+2. **Multiple Runs per Configuration**: Each operator configuration is evaluated over 5 independent runs for more reliable statistics.
+3. **Per-Generation Logging**: Fitness and diversity values are recorded at every generation for each run.
+4. **Run-Averaged Curves**: Per-generation averages across 5 runs are computed and stored.
+5. **All Solomon Instances**: All selected Solomon instances can be evaluated with the same experimental pipeline.
 
-## 📋 Skenario Eksperimen
+## Experimental Workflow
 
-1. **Generate Kombinasi**: Semua kombinasi representation × selection × crossover × mutation
-2. **Run 5x**: Setiap kombinasi dijalankan 5 kali (independent runs)
-3. **Simpan History**: Setiap generasi dari setiap run disimpan
-4. **Hitung Rata-rata**: Rata-rata per generasi dari 5 runs dihitung
-5. **Simpan Hasil**: Hasil disimpan dalam format CSV dan JSON
+1. **Generate Configurations**: Build the Cartesian product of representation × selection × crossover × mutation.
+2. **Run 5 Times**: Execute each configuration 5 times with different random seeds.
+3. **Log History**: Store fitness and diversity at each generation for every run.
+4. **Compute Averages**: Aggregate per-generation averages over the 5 runs.
+5. **Save Results**: Export results to CSV and JSON for downstream analysis and visualization.
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 
-# Run dengan semua datasets (sequential)
+# Run on all configured datasets (sequential)
 python main.py --config config.yaml
 
-# Run dengan parallel execution (4 workers)
-# Edit config.yaml: n_jobs: 4
+# Run with parallel execution (e.g., 4 workers)
+# Set in config.yaml: n_jobs: 4
 python main.py --config config.yaml
 
-# Run dengan auto-detect CPU cores
-# Edit config.yaml: n_jobs: 0
+# Run with auto-detected number of CPU cores
+# Set in config.yaml: n_jobs: 0
 python main.py --config config.yaml
 
-# Run instance tertentu saja
+# Run a specific instance only
 python main.py --config config.yaml --instance C101
 python main.py --config config.yaml --instance C102
 ```
 
-## 🔀 Multi-Terminal / Multi-Instance Execution
 
-Untuk menjalankan beberapa instance secara paralel di terminal berbeda (misalnya di AI Center):
+## Multi-Terminal / Multi-Instance Execution
 
-### 1. Run Instance Spesifik
+You can run different instances in parallel from separate terminals or machines.
 
-Setiap terminal menjalankan instance yang berbeda:
+### 1. Run Specific Instances
+
+Each terminal runs a different instance:
 
 ```bash
 # Terminal 1
@@ -59,47 +60,56 @@ python main.py --config config.yaml --instance C102
 python main.py --config config.yaml --instance C103
 ```
 
-**Catatan:**
-- Setiap instance akan menggunakan checkpoint file terpisah: `checkpoint_<instance>.json`
-- Hasil tetap disimpan di `results/<instance>/<instance>_results.json`
-- Tidak ada konflik karena setiap instance menggunakan checkpoint file sendiri
+Notes:
+
+- Each instance uses its own checkpoint file: `checkpoint_<instance>.json`.
+
+```
+- Results are stored under `results/<instance>/<instance>_results.json`.
+```
+
+- There are no conflicts because each instance has a separate checkpoint file.
+
 
 ### 2. Merge Checkpoints
 
-Setelah semua instance selesai, merge checkpoint files menjadi satu:
+After all instances finish, merge per-instance checkpoints:
 
 ```bash
-# Merge semua checkpoint_*.json menjadi checkpoint.json
+# Merge all checkpoint_*.json into a single checkpoint.json
 python merge_checkpoints.py --results-dir results
 
-# Atau dengan output file custom
+# Custom merged output file
 python merge_checkpoints.py --results-dir results --output results/checkpoint_merged.json
 ```
 
-**Fungsi merge:**
-- Menggabungkan semua `checkpoint_<instance>.json` menjadi satu `checkpoint.json`
-- Menggabungkan `completed_methods` dari semua instance
-- Menggabungkan `completed_instances` dari semua instance
-- Menampilkan summary per instance
+The merge step:
 
-## ✅ Checkpoint & Resume
+- Combines all `checkpoint_<instance>.json` into one consolidated checkpoint.
+- Merges `completed_methods` and `completed_instances` across all instances.
+- Prints a summary per instance.
 
-Sistem mendukung checkpoint/resume:
-- **Auto-save**: Setelah setiap kombinasi selesai
-- **Auto-resume**: Jika terminate, jalankan lagi dan akan lanjut dari yang belum selesai
-- **Skip completed**: Kombinasi yang sudah selesai akan di-skip otomatis
 
-**Checkpoint files:**
-- **All instances mode**: `results/checkpoint.json`
-- **Single instance mode** (`--instance`): `results/checkpoint_<instance>.json`
-  - Contoh: `checkpoint_C101.json`, `checkpoint_C102.json`
-  - Setiap instance memiliki checkpoint file sendiri (tidak numpuk)
+## Checkpointing \& Resume
 
-## ⚡ Parallel Execution
+The system supports safe interruption and resumption:
 
-Sistem mendukung parallel execution untuk mempercepat proses:
+- **Auto-save**: State is saved after each completed configuration.
+- **Auto-resume**: On restart, the system continues from unfinished configurations.
+- **Skip completed**: Already finished configurations are automatically skipped.
 
-**Konfigurasi di `config.yaml`:**
+Checkpoint files:
+
+- **All-instances mode**: `results/checkpoint.json`
+- **Single-instance mode** (`--instance`): `results/checkpoint_<instance>.json`
+Examples: `checkpoint_C101.json`, `checkpoint_C102.json`
+
+Each instance maintains its own checkpoint file, preventing overwrites.
+
+## Parallel Execution
+
+Parallelism is controlled via `config.yaml`:
+
 ```yaml
 evaluation:
   n_jobs: null  # Sequential (default)
@@ -109,41 +119,48 @@ evaluation:
   # n_jobs: 8   # Use 8 parallel workers
 ```
 
-**Cara kerja:**
-- `n_jobs: null` atau `1`: Sequential execution (1 kombinasi per waktu)
-- `n_jobs: 0`: Auto-detect CPU cores (gunakan semua core - 1)
-- `n_jobs: N` (N > 1): Gunakan N parallel workers
+Behavior:
 
-**Contoh:**
-- 5 runs per kombinasi dengan `n_jobs: 5` → 5 runs dijalankan parallel
-- Speedup: ~Nx faster (dengan overhead minimal)
+- `n_jobs: null` or `1`: Purely sequential execution.
+- `n_jobs: 0`: Auto-detect CPU cores and use all cores minus one.
+- `n_jobs: N` (N > 1): Use N parallel workers.
 
-## 📁 Struktur Output
+Example:
 
-```
+- With 5 runs per configuration and `n_jobs: 5`, all runs for that configuration can execute in parallel, giving an approximate N× speedup (subject to overhead and hardware limits).
+
+
+## Output Structure
+
+```text
 results/
 ├── {instance_name}/
-│   ├── {method_name}_convergence.csv  # History per run + average
-│   └── {instance_name}_results.json   # Summary results
+│   ├── {method_name}_convergence.csv   # Per-run and averaged histories
+│   └── {instance_name}_results.json    # Summary statistics per method
+└── checkpoint*.json                    # Global or per-instance checkpoints
 ```
 
-### Format CSV Convergence
 
-Setiap file `{method_name}_convergence.csv` berisi:
-- `generation`: Nomor generasi (1, 2, 3, ...)
-- `fitness_run_1` sampai `fitness_run_5`: Fitness per run per generasi
-- `diversity_run_1` sampai `diversity_run_5`: Diversity per run per generasi
-- `fitness_average`: Rata-rata fitness per generasi (dari 5 runs)
-- `diversity_average`: Rata-rata diversity per generasi (dari 5 runs)
+### CSV Convergence Format
 
-### Format JSON Results
+Each `{method_name}_convergence.csv` contains:
 
-Setiap file `{instance_name}_results.json` berisi:
+- `generation`: Generation index (1, 2, 3, ...).
+- `fitness_run_1` … `fitness_run_5`: Fitness per run per generation.
+- `diversity_run_1` … `diversity_run_5`: Diversity per run per generation.
+- `fitness_average`: Mean fitness across 5 runs per generation.
+- `diversity_average`: Mean diversity across 5 runs per generation.
+
+
+### JSON Results Format
+
+Each `{instance_name}_results.json` stores method-level summaries:
+
 ```json
 {
   "method_name": {
-    "method_name": "...",
-    "average_fitness_history": [...],  // Rata-rata per generasi
+    "method_name": "representation_selection_crossover_mutation",
+    "average_fitness_history": [...],
     "average_diversity_history": [...],
     "best_fitness": 1234.56,
     "mean_fitness": 1234.56,
@@ -154,16 +171,20 @@ Setiap file `{instance_name}_results.json` berisi:
 }
 ```
 
-## ⚙️ Konfigurasi
 
-Edit `config.yaml` untuk mengubah:
-- GA parameters (population_size, max_generations, dll)
-- Representations, selection methods, crossover methods, mutation methods
-- Number of runs per combination (default: 5)
+## Configuration
 
-## 📊 Contoh Output
+Edit `config.yaml` to customize:
 
-```
+- GA parameters: population size, max generations, mutation rate, etc.
+- Available operators: representations, selection methods, crossover operators, mutation operators.
+- Number of runs per configuration (default: 5).
+- Parallelism (`n_jobs`) and other evaluation settings.
+
+
+## Example Console Output
+
+```text
 ================================================================================
 Processing instance: C101
 ================================================================================
@@ -186,18 +207,19 @@ Evaluating: permutation_tournament_pmx_swap
   Runtime: 45.67s
 ```
 
-## 🔍 Analisis Data
 
-Data yang disimpan dapat dianalisis untuk:
-- Convergence behavior per kombinasi
-- Perbandingan performa antar kombinasi
-- Statistical significance testing
-- Visualization convergence curves
+## Data Analysis
 
-## 📝 Catatan
+The stored data can be used for:
 
-- Sistem ini lebih sederhana dari versi sebelumnya
-- Tidak ada checkpoint/resume (untuk kesederhanaan)
-- Tidak ada parallel execution (dapat ditambahkan jika perlu)
-- Fokus pada data collection yang lengkap untuk analisis
+- Inspecting convergence behavior per configuration.
+- Comparing performance across operator combinations and instances.
+- Statistical significance tests (e.g., non-parametric tests, effect sizes).
+- Plotting convergence curves, diversity trajectories, and interaction effects.
 
+
+## Notes
+
+- This repository focuses on a clean, reproducible GA operator comparison framework for VRPTW.
+- Checkpointing and parallel execution are supported for efficient large-scale experiments.
+- The design emphasizes complete and structured data collection to enable in-depth post-hoc analysis.
