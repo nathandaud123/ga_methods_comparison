@@ -1,0 +1,12 @@
+Representation,Mutation,Sample Count,Average Fitness,Std Dev,Best Fitness,Worst Fitness
+permutation,swap,2352,1855.32,653.53,804.41,3782.15
+permutation,insert,2352,1898.91,666.59,795.08,3772.83
+binary,interchanging,1680,1942.23,294.81,1263.99,2718.68
+permutation,inversion,2352,2126.3,921.13,702.75,3786.4
+permutation,scramble,2352,2293.59,691.17,733.7,3833.19
+permutation,displacement,2352,2297.72,850.07,790.65,3827.34
+real_valued,polynomial,1008,2573.74,507.64,1485.29,3758.98
+real_valued,gaussian,1008,2724.9,490.9,1660.59,3925.98
+real_valued,uniform,1008,3284.43,395.33,2597.97,3966.51
+binary,uniform,1680,3320.04,390.55,2715.14,3962.92
+binary,bit_flip,1680,3341.94,394.0,2799.23,3976.92

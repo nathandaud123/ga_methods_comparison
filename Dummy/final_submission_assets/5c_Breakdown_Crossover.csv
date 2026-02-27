@@ -1,0 +1,16 @@
+Representation,Crossover,Sample Count,Average Fitness,Std Dev,Best Fitness,Worst Fitness
+permutation,scx,1680,1169.05,311.84,702.75,2586.8
+permutation,cx,1680,2057.47,615.36,785.71,3618.19
+permutation,pmx,1680,2141.86,757.8,763.73,3754.07
+permutation,pos,1680,2151.67,695.82,743.69,3793.07
+permutation,obx,1680,2154.78,696.46,769.19,3827.34
+permutation,ox,1680,2179.2,726.88,762.95,3678.75
+real_valued,flat,1008,2698.61,614.53,1485.29,3959.26
+real_valued,sbx,1008,2770.75,525.03,1782.56,3940.59
+permutation,erx,1680,2806.53,638.66,1211.84,3833.19
+binary,uniform,1008,2812.38,819.68,1263.99,3966.6
+binary,shuffle,1008,2854.7,763.45,1351.08,3962.18
+binary,multi_point,1008,2877.62,732.54,1517.73,3976.2
+binary,two_point,1008,2891.59,716.15,1523.74,3968.59
+binary,single_point,1008,2904.06,702.92,1519.38,3976.92
+real_valued,blx_alpha,1008,3113.7,428.72,2110.54,3966.51

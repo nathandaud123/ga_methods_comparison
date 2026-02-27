@@ -1,0 +1,4 @@
+Representation,Sample Count,Average Fitness,Std Dev,Best Fitness,Worst Fitness
+permutation,11760,2094.37,786.98,702.75,3833.19
+real_valued,3024,2861.02,558.26,1485.29,3966.51
+binary,5040,2868.07,748.51,1263.99,3976.92

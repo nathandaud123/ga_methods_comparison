@@ -1,0 +1,19 @@
+Representation,Selection,Sample Count,Average Fitness,Std Dev,Best Fitness,Worst Fitness
+permutation,elitism,1960,1610.53,435.73,730.8,2968.4
+permutation,boltzmann,1960,1635.17,454.45,743.69,3047.25
+permutation,tournament,1960,1915.11,701.77,715.08,3716.6
+permutation,rank,1960,2316.71,782.29,702.75,3826.78
+permutation,roulette_wheel,1960,2539.62,801.56,733.7,3827.34
+permutation,stochastic_universal,1960,2549.06,801.42,740.22,3833.19
+real_valued,tournament,504,2684.93,642.15,1485.29,3942.07
+real_valued,rank,504,2809.86,621.82,1517.42,3966.51
+binary,rank,840,2839.98,794.41,1263.99,3966.71
+binary,tournament,840,2855.52,770.89,1265.21,3968.59
+binary,boltzmann,840,2869.42,709.19,1543.97,3956.66
+binary,elitism,840,2875.01,729.19,1510.62,3955.77
+binary,stochastic_universal,840,2882.21,744.8,1373.79,3976.2
+binary,roulette_wheel,840,2886.29,740.69,1365.52,3976.92
+real_valued,stochastic_universal,504,2890.71,589.5,1625.98,3954.79
+real_valued,roulette_wheel,504,2894.16,582.66,1699.22,3959.26
+real_valued,boltzmann,504,2934.55,355.78,2403.73,3689.74
+real_valued,elitism,504,2951.92,459.38,2006.26,3897.44

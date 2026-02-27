@@ -1,0 +1,16 @@
+Method,Avg_Rank,Mean_Fitness,Std_Fitness
+permutation-stochastic-universal-scx-inversion,4.34,982.38,152.13
+permutation-rank-scx-inversion,7.46,1023.21,462.81
+permutation-stochastic-universal-scx-scramble,7.62,1007.77,158.51
+permutation-roulette-wheel-scx-inversion,8.08,1031.79,458.76
+permutation-tournament-scx-inversion,8.13,1031.86,462.26
+permutation-roulette-wheel-scx-scramble,11.33,1056.51,457.13
+permutation-stochastic-universal-scx-swap,13.73,1050.78,155.24
+permutation-stochastic-universal-scx-displacement,15.36,1057.74,157.32
+permutation-roulette-wheel-scx-swap,16.17,1092.81,452.99
+permutation-elitism-scx-inversion,16.43,1135.84,257.84
+permutation-rank-scx-scramble,17.72,1101.7,451.77
+permutation-roulette-wheel-scx-displacement,17.72,1101.22,451.21
+permutation-elitism-ox-inversion,18.21,1178.93,297.75
+permutation-stochastic-universal-scx-insert,18.77,1077.1,156.47
+permutation-boltzmann-pos-inversion,19.39,1189.67,299.86

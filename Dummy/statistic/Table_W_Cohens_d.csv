@@ -1,0 +1,16 @@
+Method,Cohens_d,Magnitude
+permutation-rank-scx-inversion,0.13,Negligible
+permutation-stochastic-universal-scx-scramble,1.02,Large
+permutation-roulette-wheel-scx-inversion,0.16,Negligible
+permutation-tournament-scx-inversion,0.16,Negligible
+permutation-roulette-wheel-scx-scramble,0.25,Small
+permutation-stochastic-universal-scx-swap,2.36,Large
+permutation-stochastic-universal-scx-displacement,2.56,Large
+permutation-roulette-wheel-scx-swap,0.38,Small
+permutation-elitism-scx-inversion,2.1,Large
+permutation-roulette-wheel-scx-displacement,0.41,Small
+permutation-rank-scx-scramble,0.41,Small
+permutation-elitism-ox-inversion,1.85,Large
+permutation-stochastic-universal-scx-insert,2.96,Large
+permutation-boltzmann-pos-inversion,1.94,Large
+permutation-rank-scx-swap,0.46,Small

@@ -1,0 +1,16 @@
+Method,Avg_Rank,Rank_Difference,CD,Significant
+permutation-rank-scx-inversion,7.46,3.12,93.23,False
+permutation-stochastic-universal-scx-scramble,7.62,3.29,93.23,False
+permutation-roulette-wheel-scx-inversion,8.08,3.74,93.23,False
+permutation-tournament-scx-inversion,8.13,3.79,93.23,False
+permutation-roulette-wheel-scx-scramble,11.33,6.99,93.23,False
+permutation-stochastic-universal-scx-swap,13.73,9.39,93.23,False
+permutation-stochastic-universal-scx-displacement,15.36,11.02,93.23,False
+permutation-roulette-wheel-scx-swap,16.17,11.83,93.23,False
+permutation-elitism-scx-inversion,16.43,12.09,93.23,False
+permutation-roulette-wheel-scx-displacement,17.72,13.38,93.23,False
+permutation-rank-scx-scramble,17.72,13.38,93.23,False
+permutation-elitism-ox-inversion,18.21,13.88,93.23,False
+permutation-stochastic-universal-scx-insert,18.77,14.43,93.23,False
+permutation-boltzmann-pos-inversion,19.39,15.05,93.23,False
+permutation-rank-scx-swap,20.24,15.9,93.23,False

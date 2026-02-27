@@ -1,0 +1,276 @@
+================================================================================
+PROMPT UNTUK PERPLEXITY AI: TULIS BAB 3 METHODOLOGY
+================================================================================
+
+Saya meminta Anda untuk menulis Bab 3 (Methodology) untuk penelitian komparasi 
+operator Genetic Algorithm pada Vehicle Routing Problem. Berikut adalah detail 
+implementasi yang HARUS diikuti dengan tepat:
+
+================================================================================
+1. PROBLEM FORMULATION (3.1)
+================================================================================
+
+1.1. Definisi Masalah:
+- Vehicle Routing Problem (VRP) dengan kendala kapasitas
+- Set pelanggan dengan depot (customer 0 = depot)
+- Demand untuk setiap pelanggan
+- Kapasitas kendaraan (homogeneous fleet)
+- Matriks jarak antar lokasi
+- Tujuan: Meminimalkan total jarak yang ditempuh semua kendaraan
+
+1.2. FORMULA OBJEKTIF (PENTING - HARUS EKSPLISIT):
+
+Objective: Minimize Total Distance Traveled by All Vehicles
+
+Formula matematis lengkap:
+minimize Z = Σ(k=1 to m) Σ(i=0 to n) Σ(j=0 to n) d[i][j] * x[k][i][j]
+
+dimana:
+- Z = total jarak yang ditempuh semua kendaraan (objective value)
+- m = jumlah kendaraan yang digunakan
+- n = jumlah customer (node 0 adalah depot, node 1..n adalah customers)
+- d[i][j] = jarak Euclidean antara node i dan node j
+- x[k][i][j] = 1 jika kendaraan k melakukan perjalanan dari node i ke node j, 0 otherwise
+
+Perhitungan jarak Euclidean (d[i][j]):
+d[i][j] = √[(x_i - x_j)² + (y_i - y_j)²]
+
+dimana:
+- (x_i, y_i) = koordinat node i
+- (x_j, y_j) = koordinat node j
+
+Implementasi dalam kode (sesuai dengan src/representation/permutation.py):
+1. Decode kromosom menjadi rute-rute: routes = decode_to_routes(chromosome)
+   - Setiap rute adalah list: [0, customer1, customer2, ..., customer_k, 0]
+   - Dimana 0 adalah depot, dan rute dimulai dan berakhir di depot
+
+2. Hitung total distance untuk setiap rute:
+   For each route in routes:
+       For i in range(len(route) - 1):
+           total_distance += dist_matrix[route[i]][route[i+1]]
+
+3. Total distance = sum dari semua rute
+
+Contoh perhitungan:
+Jika ada 2 rute:
+- Rute 1: [0, 3, 1, 5, 0] → distance = d[0][3] + d[3][1] + d[1][5] + d[5][0]
+- Rute 2: [0, 2, 4, 0] → distance = d[0][2] + d[2][4] + d[4][0]
+- Total Z = distance_rute1 + distance_rute2
+
+Catatan penting:
+- Fitness function mengembalikan total_distance (semakin kecil semakin baik)
+- Semua customer harus dikunjungi tepat satu kali
+- Setiap rute harus memenuhi kendala kapasitas
+
+1.3. Kendala:
+- Setiap customer harus dikunjungi tepat satu kali
+- Total demand dalam satu rute tidak boleh melebihi kapasitas kendaraan
+- Setiap rute dimulai dan diakhiri di depot (node 0)
+
+================================================================================
+2. GENETIC ALGORITHM IMPLEMENTATION (3.2)
+================================================================================
+
+2.1. Representasi Kromosom:
+Tiga jenis representasi yang diuji:
+a) Permutation Representation:
+   - Kromosom = array urutan customer ID
+   - Contoh: [3, 1, 5, 2, 4] berarti urutan kunjungan customer
+   - Decode ke rute menggunakan greedy approach berdasarkan kapasitas
+
+b) Binary Representation:
+   - Kromosom = array biner
+   - Decode ke permutation terlebih dahulu, kemudian ke rute
+
+c) Real-valued Representation:
+   - Kromosom = array nilai real [0, 1]
+   - Nilai merepresentasikan prioritas/weight untuk urutan customer
+   - Decode ke permutation berdasarkan sorting nilai prioritas
+
+2.2. Inisialisasi Populasi:
+- Populasi awal di-generate secara random
+- Ukuran populasi: 80 individu
+- Setiap kromosom di-generate sesuai representasinya
+
+2.3. Evaluasi Fitness:
+- Fitness = Total Distance (semakin kecil semakin baik)
+- Untuk setiap kromosom:
+  1. Decode kromosom menjadi rute-rute
+  2. Hitung total jarak semua rute
+  3. Return total jarak sebagai fitness
+
+2.4. Seleksi:
+Enam metode seleksi yang diuji:
+a) Roulette Wheel Selection
+b) Tournament Selection (tournament size = 3)
+c) Rank Selection
+d) Stochastic Universal Sampling (SUS)
+e) Elitism Selection
+f) Boltzmann Selection
+
+2.5. Crossover:
+Crossover disesuaikan dengan representasi:
+
+Untuk Permutation Representation:
+- PMX (Partially Mapped Crossover)
+- OX (Order Crossover)
+- CX (Cycle Crossover)
+- OBX (Order-Based Crossover)
+- POS (Position-Based Crossover)
+- ERX (Edge Recombination Crossover)
+- SCX (Sequential Constructive Crossover)
+
+Untuk Binary Representation:
+- Single-point Crossover
+- Two-point Crossover
+- Multi-point Crossover
+- Uniform Crossover
+- Shuffle Crossover
+
+Untuk Real-valued Representation:
+- SBX (Simulated Binary Crossover)
+- BLX-α (Blend Crossover, α = 0.5)
+- Flat Crossover
+
+Crossover rate: 0.9
+
+2.6. Mutasi:
+Mutasi disesuaikan dengan representasi:
+
+Untuk Permutation Representation:
+- Swap Mutation (menukar dua posisi)
+- Insert Mutation (memindahkan satu elemen)
+- Inversion Mutation (membalik urutan sub-sequence)
+- Scramble Mutation (mengacak sub-sequence)
+- Displacement Mutation (memindahkan sub-sequence)
+
+Untuk Binary Representation:
+- Bit Flip Mutation
+- Uniform Mutation
+- Interchanging Mutation
+
+Untuk Real-valued Representation:
+- Gaussian Mutation (σ = 0.1)
+- Polynomial Mutation (η = 20.0)
+- Uniform Mutation
+
+Mutation rate: 0.3
+
+2.7. Parameter GA:
+- Population size: 80
+- Maximum generations: 500
+- Crossover rate: 0.9
+- Mutation rate: 0.3
+- Tournament size: 3
+- Elitism rate: 0.0 (PENTING: TIDAK ADA ELITISM)
+
+Catatan penting: Elitism TIDAK digunakan dalam implementasi ini. 
+Semua individu dalam populasi baru di-generate melalui seleksi, 
+crossover, dan mutasi. Tidak ada individu terbaik yang langsung 
+di-copy ke generasi berikutnya.
+
+2.8. Alur GA:
+1. Inisialisasi populasi random
+2. Evaluasi fitness semua individu
+3. Untuk setiap generasi (sampai max_generations = 500):
+   a. Seleksi parent (2 parent untuk menghasilkan 2 offspring)
+   b. Crossover dengan probability 0.9
+   c. Mutasi dengan probability 0.3
+   d. Repair kromosom jika diperlukan (untuk permutation)
+   e. Evaluasi fitness offspring
+   f. Ganti populasi dengan offspring
+   g. Update best solution
+   h. Track fitness history dan diversity history
+4. Return best solution
+
+================================================================================
+3. EXPERIMENTAL SETUP (3.3)
+================================================================================
+
+3.1. Dataset:
+- Menggunakan Solomon Benchmark Dataset
+- Tiga tipe instance: C (Clustered), R (Random), RC (Random-Clustered)
+- Setiap tipe memiliki sub-kategori: C1/C2, R1/R2, RC1/RC2
+- Kapasitas kendaraan: 200 (untuk series 1) atau 1000 (untuk series 2)
+- Format data: CSV dengan kolom: Customer ID, X-coordinate, Y-coordinate, 
+  Demand, Ready Time, Due Date, Service Time
+
+3.2. Kombinasi Metode:
+Semua kombinasi dari:
+- 3 representasi × 6 seleksi × (7+5+3) crossover × (5+3+3) mutation
+- Total kombinasi: 3 × 6 × 15 × 11 = 2,970 kombinasi metode
+
+3.3. Metodologi Evaluasi:
+- Setiap kombinasi metode diuji pada setiap instance
+- Setiap kombinasi dijalankan 5 kali (independent runs)
+- Untuk setiap run, simpan:
+  * Best fitness per generasi
+  * Average fitness per generasi
+  * Diversity per generasi
+  * Final best fitness
+  * Final best routes
+- Hitung rata-rata dari 5 runs untuk setiap generasi
+- Simpan hasil ke file:
+  * CSV: convergence history (individual runs + average)
+  * JSON: summary results (best fitness, routes, metrics)
+
+3.4. Kriteria Evaluasi:
+- Best fitness (total distance) - semakin kecil semakin baik
+- Convergence behavior (fitness history)
+- Population diversity
+- Consistency (variansi antar 5 runs)
+
+================================================================================
+4. STRUKTUR BAB 3 YANG DIMINTA
+================================================================================
+
+3. Methodology
+  3.1. Problem Formulation
+      - Definisi VRP
+      - Formula objektif (EKSPLISIT dengan notasi matematis)
+      - Kendala
+  3.2. Genetic Algorithm Implementation
+      3.2.1. Representation
+      3.2.2. Initialization
+      3.2.3. Fitness Evaluation
+      3.2.4. Selection Methods
+      3.2.5. Crossover Operators
+      3.2.6. Mutation Operators
+      3.2.7. GA Parameters
+      3.2.8. Algorithm Flow
+  3.3. Experimental Setup
+      3.3.1. Dataset
+      3.3.2. Method Combinations
+      3.3.3. Evaluation Methodology
+      3.3.4. Performance Metrics
+
+================================================================================
+5. CATATAN PENTING
+================================================================================
+
+1. Formula objektif HARUS ditulis dengan EKSPLISIT dan jelas, termasuk:
+   - Notasi matematis yang tepat
+   - Penjelasan setiap variabel
+   - Formula perhitungan jarak Euclidean
+
+2. PENTING: Elitism TIDAK digunakan (elitism_rate = 0.0). 
+   Semua individu di-generate baru setiap generasi.
+
+3. Setiap operator (selection, crossover, mutation) harus dijelaskan 
+   secara singkat bagaimana cara kerjanya.
+
+4. Parameter GA harus sesuai dengan yang disebutkan di atas.
+
+5. Metodologi evaluasi harus menjelaskan:
+   - 5 independent runs per kombinasi
+   - Penyimpanan generation history
+   - Perhitungan rata-rata dari 5 runs
+
+6. Gunakan bahasa akademik yang formal dan jelas.
+
+7. Pastikan konsistensi notasi matematis di seluruh bab.
+
+================================================================================
+SILAKAN TULIS BAB 3 SESUAI DENGAN SPESIFIKASI DI ATAS
+================================================================================
+

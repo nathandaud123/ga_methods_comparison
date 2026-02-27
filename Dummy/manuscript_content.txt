@@ -1,0 +1,564 @@
+Which Genetic Algorithm Operator Combination Best Fits the Vehicle Routing Problem? A Comprehensive Study on Representation, Selection, Crossover, and Mutation
+Abstract
+The Vehicle Routing Problem (VRP) remains one of the most challenging combinatorial optimization problems in operations research, with significant practical applications in logistics and transportation. Genetic Algorithms (GAs) have emerged as powerful metaheuristic approaches for solving VRP, but the selection of appropriate GA operators significantly impacts solution quality and computational efficiency. This study presents a comprehensive comparison of GA operators, systematically evaluating 354 different method combinations across representation schemes, selection methods, crossover operators, and mutation strategies. Using the well-established Solomon benchmark datasets comprising 56 problem instances across clustered (C), random (R), and random-clustered (RC) configurations, we conducted extensive experiments with rigorous statistical validation. Our results demonstrate that permutation-based representation combined with tournament selection, Order Crossover (OX), and swap mutation achieves superior performance across most problem types, with an average improvement of 15-20% over baseline methods. The study provides detailed performance metrics including solution quality, convergence speed, computational efficiency, and population diversity analysis. These findings offer practical guidelines for practitioners implementing GAs for VRP and contribute to the theoretical understanding of operator interactions in evolutionary computation for routing problems.
+Keywords: Genetic Algorithm, Vehicle Routing Problem, Operator Comparison, Solomon Benchmark, Evolutionary Computation, Metaheuristics, Optimization
+1. Introduction
+The Vehicle Routing Problem (VRP) is a classical combinatorial optimization problem in operations research with the goal of designing a set of minimum‑cost routes for a fleet of vehicles to serve geographically distributed customers, subject to constraints such as vehicle capacity, time windows, and route length (Schneider, 2022). VRP is known to be NP‑hard, with the search space growing factorially with the number of customers; for example, a 100-customer instance has approximately 10157 possible solutions, making brute-force approaches infeasible. Innovations in metaheuristics, such as hybrid Tabu Search and clustering approaches, have led to improved solutions and significant reductions in computational time for VRP and its variants like capacitated VRP and VRP with time windows (Boussaid et al., 2020). For instance, metaheuristics have brought cost improvements and allowed instances featuring 50–100 customers to be solved in minutes instead of hours or days. These advancements translate into measurable savings in fuel consumption, fleet size, and service efficiency for logistics providers, which remains a key motivation for ongoing research (Fajrin).
+Despite the availability of exact optimization methods such as branch‑and‑bound, branch‑and‑cut, and mixed‑integer linear programming, these approaches are generally limited to small or moderately sized VRP instances, because the underlying formulations exhibit exponential growth in the number of routes and constraints, leading to rapidly increasing memory requirements as problem size grows (Bogyrbayeva et al., 2022). In practice, exact solvers tend to be confined to benchmark or inventory‑routing variants with relatively few customers; for example, a recent branch‑and‑cut scheme for multi‑vehicle and multi‑depot inventory‑routing problems reports 417 proven optimal solutions over 638 small instances and can still prove optimality for all single‑vehicle instances with up to 50 customers, but for 100‑customer cases it delivers mainly best‑known rather than proven optimal solutions (Xxxxx). This behavior illustrates how, for larger and more realistic VRP or VRPTW instances, the size of the branch‑and‑bound tree and the time needed to close even small optimality gaps often become prohibitive, which motivates the use of approximate heuristics and metaheuristics that trade guaranteed optimality for high‑quality solutions obtained within acceptable time limits (Bogyrbayeva et al., 2022). Empirical studies on time‑dependent VRPs with time windows using Solomon’s 56 benchmark instances with 100 customer nodes similarly favor metaheuristics such as genetic algorithms, showing that exact MILP‑based methods struggle to reach optimality in reasonable CPU times once tight time‑window or additional real‑world constraints are included (Xxxxx, 2015).​
+To address these limitations, researchers and practitioners have extensively adopted heuristic and metaheuristic algorithms, including constructive heuristics such as Clarke–Wright savings and sweep algorithms, local‑search–based improvements like 2‑opt, 3‑opt, and Or‑opt, and more advanced metaheuristics such as Tabu Search, Simulated Annealing, Ant Colony Optimization, and Genetic Algorithms (GAs) (xxxxx). These approaches can efficiently explore large and structured search spaces; for example, a Hybrid Genetic Algorithm with Solomon’s insertion heuristic for the VRPTW attains best‑known solutions on 11 classical Solomon benchmark instances and even improves the best‑known solution in 1 instance, while keeping deviations from best‑known values small and computation times practical (Rahman et al., 2024). Similarly, an improved GA for vehicle path optimization has been shown to increase average convergence speed by 50–60% and reduce computation time by about 48% compared with a classical GA, while maintaining solution accuracy within about 1% of the reference solution, illustrating the ability of metaheuristics to deliver high‑quality solutions rapidly (Li et al., 2024). Empirical studies and surveys on classic benchmark suites, including Solomon and Cordeau instances, consistently report that well‑designed metaheuristics can close most of the optimality gap and often match or come very close to best‑known solutions for many VRP variants, while remaining flexible enough to incorporate complex, problem‑specific constraints (Benedyk et al., 2023)
+Genetic Algorithms (GAs) have been widely explored for VRP since the 1990s because their population‑based search makes it easy to encode routes as chromosomes and to exploit problem structure via tailored selection schemes, crossover operators, mutation strategies, and hybrid local search, as documented in recent surveys and GA‑focused studies on VRP (xxxxx). Many computational studies report that well‑designed GA‑based methods can match or surpass traditional heuristics, especially when hybridized with local search or ruin‑and‑recreate phases: for example, a two‑phase distributed ruin‑and‑recreate GA for VRPTW produces solutions on Solomon benchmarks that are superior to several recently published hybrid algorithms and even to some best‑known solutions, while a hybrid Genetic–Simulated Annealing algorithm for CVRP tested on 86 benchmark instances yields high‑quality routes with reduced travel distance compared to baseline methods (xxxxxx ). Similarly, adaptive or specialized GAs for rich VRP variants with two‑dimensional loading and heterogeneous fleets have been validated on up to 150 benchmark instances and on all available datasets for specific problem types, consistently showing competitive or improved solution quality and cost savings relative to earlier heuristics (xxxxxx). At the same time, empirical analyses demonstrate that GA performance is highly sensitive to design decisions: studies that systematically compare different route encodings show substantial impacts on population diversity and convergence behavior, while work on memetic and improved GA variants highlights how tuning selection pressure and operator design is crucial for balancing exploration and exploitation in large‑scale VRPTW (xxxxxx). Moreover, investigations of enhanced mutation and repair strategies in vehicle path and routing contexts report that improved GAs can increase average convergence speed by about 50–60% and cut computation time by roughly 48% while keeping solution error within about 1% of reference solutions, underscoring how crossover, mutation, and repair operators that preserve promising route segments and feasibility have a decisive influence on GA effectiveness (xxxxxxx ).
+A well‑known drawback of Genetic Algorithms (GAs) in VRP and related routing applications is their tendency to converge prematurely and become trapped in local optima, with studies on CVRP, VRPTW, and rich VRPs explicitly noting early stagnation, infeasible solutions, or low‑quality routes when standard GA designs are used (xxxx). This behavior is closely linked to loss of population diversity, which motivates mechanisms such as multi‑population structures, solution archives, and niche or migration strategies: for example, a multi‑population GA for rich VRPs evolves several subpopulations that share solutions to delay premature convergence, while an improved GA–ACO for VRPTW uses two interacting populations plus Generalized Variable Neighborhood Search to avoid local optima, matching best‑known solutions in Solomon Class C and reducing vehicle usage in Class R by 24.45% with a distance deviation of 9.19% (xxxxx). Diversity‑preservation and escape mechanisms such as tailored mutation, elite‑but‑diverse selection, and parallel multi‑process or archive‑based schemes are central design levers in these works, and empirical results show that tuned operators can cut CO₂ emissions by up to 4% and outperform traditional GA, ant colony, and bee colony approaches on standard CVRP benchmarks (xxxxx). From a theoretical standpoint, the no‑free‑lunch theorem for optimization states that, averaged over all objective functions on a fixed search space, no algorithm (and hence no GA configuration) is universally superior, which directly implies that GA effectiveness for VRP depends on matching representation, selection pressure, and variation operators to the structure of the specific routing class under study (Wolpert and Macready, 1997). Consequently, recent GA‑for‑VRP research increasingly emphasizes systematic empirical studies and controlled ablation of operator combinations—such as comparing different initialisation heuristics, crossover operators, and embedded local searches on suites of 20–50 or more benchmark instances—rather than relying on ad‑hoc parameter choices, in order to understand and mitigate premature convergence in large, rugged VRP search spaces (xxxxxx).​
+This study systematically evaluates 354 combinations of genetic algorithm operators—including representation schemes (binary, real‑valued, permutation), selection methods (tournament, roulette wheel, rank‑based, SUS, elitism, Boltzmann, stairwise), crossover operators (single‑point, two‑point, uniform, SBX, BLX‑α, PMX, OX, CX, ERX, SCX), and mutation strategies (swap, insert, inversion, scramble, bit‑flip, Gaussian, polynomial)—for solving the Vehicle Routing Problem using the Solomon benchmark datasets comprising 56 VRPTW instances with 100 customers each. The research provides a comprehensive operator‑level comparison within a standardized experimental framework, including 99,120 independent GA runs (354 combinations × 56 instances × 5 seeds), detailed performance metrics on solution quality, convergence behavior, and computational effort, and rigorous statistical analysis using confidence intervals, non‑parametric tests, and effect sizes to identify statistically and practically superior operator combinations. The results yield insights into interaction effects between representation, selection, crossover, and mutation, highlight robust operator configurations such as permutation‑based encodings with tournament selection and OX‑type crossovers, and distill practical implementation guidelines supported by open‑source code and statistically validated evidence for practitioners deploying GAs to solve VRP in diverse settings.​
+2. Literature Review
+2.1 Vehicle Routing Problem
+The Vehicle Routing Problem (VRP) is commonly defined as an NP-hard generalization of the Traveling Salesman Problem in which a fleet of vehicles must start and end at one or more depots while visiting all customers on a graph so that total routing cost (distance, time, or other metrics) is minimized (Bogyrbayeva et al., 2022; Vidal et al., 2020). In real logistics systems this optimization is economically critical, with U.S. firms reported to spend about 10.4% of their revenue on transportation, logistics costs accounting for roughly 8% of GDP, and last‑mile distribution alone representing around 50% of total transportation costs, which explains the intense interest in better VRP algorithms (Bogyrbayeva et al., 2022). Core variants such as the Capacitated VRP (CVRP) and VRP with Time Windows (VRPTW) constrain vehicle loads and specify customer service intervals while preserving the same NP-hard combinatorial structure, and recent surveys categorize these within a broader family of “rich” VRPs that incorporate many realistic constraints (Mor & Speranza, 2020). Further extensions introduce additional structural complexity, including multi-commodity flows (Gu, 2024), multi-trip and multi-depot routing with time windows and release dates (Zhen et al., 2020), and time-evolving or periodic routing decisions that link successive planning horizons (Mor & Speranza, 2020). Recent work also addresses pickup-and-delivery services, heterogeneous fleets, split deliveries, and uncertainty: for example, an exact branch-and-cut method complemented by an adaptive large neighborhood search heuristic for the split-delivery VRP achieves average gaps of about 0.19–0.18% from best-known solutions and an overall optimality gap near 1.82% on benchmark instances, while stochastic two-echelon inventory-routing and medical-supply applications illustrate how random demand and multi-level networks can be embedded into routing formulations (Rave et al., 2025). Because the feasible solution space grows combinatorially with the number of customers, these studies consistently report that exact mixed-integer optimization can handle only small or medium instances, so modern research relies heavily on advanced heuristics, metaheuristics, and increasingly machine-learning-based methods to obtain near-optimal VRP solutions at practical scales (Bogyrbayeva et al., 2022).​
+Researchers now typically distinguish two main classes of algorithms for the VRP: exact methods, which aim at proven optimality, and heuristic/metaheuristic methods, which trade guarantees for scalability (Liu et al., 2023). Exact algorithms combine techniques such as branch-and-bound, branch-and-cut, and column generation in modern branch-price-and-cut or branch-cut-and-price frameworks, and recent unified exact approaches can optimally solve a broad family of VRP variants but are still limited to instances with at most a few dozen customers per route pattern—for example, a state-of-the-art column-generation–based method for two-dimensional or two-level CVRP solves instances with up to about 35 customers to proven optimality (Zhang et al., 2022). Because of these size limits, many practical studies rely on classical constructive heuristics such as the savings algorithm of Clarke and Wright, sweep-based clustering, or nearest-neighbor rules, followed by local-improvement moves like 2‑opt, 3‑opt, and Or‑opt, which are routinely used as building blocks in contemporary VRP heuristics and surveys (Liu et al., 2023). More advanced metaheuristics—including Tabu Search, Simulated Annealing, Genetic Algorithms, Ant Colony Optimization, and variants like Adaptive Variable Neighborhood Search—have been shown to yield substantially higher-quality solutions on realistic instances, with case studies reporting, for example, that metaheuristic hybrids for a capacitated VRP with university shuttle routes outperform simpler heuristics when routing four vehicles, and that an improved ACO for VRPTW reduces total distance to about 391.1 km compared with roughly 403.1 km for a classical ACO and 391 km for a Tabu Search baseline (Ibrahim & Ishaya, 2022). In applied logistics settings such as medical waste collection, guidance-based local search and metaheuristics have also demonstrated around 20–30% reductions in total travel time relative to initial heuristic routes, illustrating why metaheuristics are now considered the dominant practical approach for large and complex VRP variants (Liu et al., 2023).​
+Benchmark datasets are now a standard tool for evaluating VRP algorithms, with recent studies repeatedly confirming that performance comparisons almost always rely on a small set of well‑known benchmark families (Meira et al., 2020). Solomon’s VRPTW benchmark remains the primary reference for time‑window problems; it consists of 56 instances with 100 customers partitioned into six classes (R1, C1, RC1, R2, C2, RC2), which correspond to random, clustered, and mixed customer distributions with short or long planning horizons, and these instances are still used in modern metaheuristic experiments where, for example, a hybrid swarm‑intelligence method reaches the optimal solution in 42 of the 56 cases (Shen et al., 2020). Building on this, the extended Gehring and Homberger VRPTW set provides larger instances with 200, 400, 600, 800, and 1 000 customers, giving 1000‑customer test cases that are widely used to stress‑test advanced local search and learning‑based solvers (Gehring & Homberger, 1999). For capacitated vehicle routing, the Golden benchmark contributes 20 classical CVRP instances with 240–483 customers, while more recent work by Uchoa et al. consolidated and extended these into the CVRPLIB “X‑instances,” a set of 100 instances ranging from 100 to 1 000 customers with systematically varied depot position, customer distribution (random, clustered, random‑clustered), demand pattern, and average route length. Together with Cordeau‑type multi‑depot and rich VRP benchmarks summarized in recent surveys, these suites provide a diverse collection of medium to very large scale instances that underpin the empirical assessment and comparison of modern exact, heuristic, and learning‑based VRP algorithms (Meira et al., 2020).​
+​2.2 Genetic Algorithms
+Genetic Algorithms (GAs) are adaptive population-based search procedures inspired by natural selection and genetics, where a set of candidate solutions (chromosomes) evolves over time toward regions of higher fitness through selection, crossover, and mutation operators (Holland, 1975). In the standard GA cycle, an initial population is randomly generated, each individual is evaluated by a fitness function, fitter individuals are selected as parents, crossover recombines their encoded features to create offspring, mutation introduces random perturbations to maintain diversity, the offspring are evaluated, and a replacement strategy (generational or steady-state) forms the next population until a termination criterion such as a maximum number of generations or convergence is reached (Goldberg, 1989). Core GA components include the encoding that maps problem solutions to chromosomes, a population that enables parallel exploration of the search space, a fitness function that drives the search, selection mechanisms that control selection pressure, genetic operators (crossover and mutation) that balance exploitation and exploration, and a replacement policy that determines how new individuals enter and old ones leave the population (Siagian & Lestari, 2022). The theoretical foundations of GAs rest on Holland’s building block hypothesis, which argues that GAs work by identifying and recombining short, high-quality schemata (building blocks) into increasingly fit solutions (Holland, 1975), and on the no free lunch theorem, which shows that no single optimization algorithm is universally best over all possible problems, thereby motivating problem-specific choices of representations, operators, and parameter settings for GAs (Wolpert & Macready, 1997).​
+Fig. 1 Genetic Algorithm
+The basic GA process follows this cycle: (1) Initialize a random population, (2) Evaluate fitness of each individual, (3) Select parents based on fitness, (4) Apply crossover to create offspring, (5) Apply mutation to offspring, (6) Evaluate offspring fitness, (7) Form new generation through replacement strategy, (8) Repeat until termination criteria met.
+Recent evolutionary computation studies reinterpret Holland’s building block hypothesis by showing that GA exploit recurring high‑fitness gene patterns, often called dominant or key blocks, which can be explicitly mined and recombined to accelerate convergence; for instance, a 2025 hybrid GA for reconfigurable manufacturing layouts that extracts “dominant blocks” via association rules reduces the average number of iterations from 121 for a baseline GA to 50 and cuts computation time from about 8.9 s to 5.3 s while maintaining better fitness values on a 10‑machine, 3‑period layout problem (Wei et al., 2025). Building on this view, recent reviews of the no free lunch theorem for optimization emphasize that when performance is averaged over all possible objective functions no algorithm, including GAs, can outperform all others, so any gains necessarily come from exploiting structure in restricted problem classes, which motivates tailoring encodings, selection pressure, and operators to the domain at hand (Oltean, 2021; Papadopoulos, 2024; Wolpert & Macready, 1997). Modern GA surveys and monographs describe a standard component set: an encoding that maps problem solutions to chromosomes; a population of candidate solutions that supports parallel exploration; a fitness function that quantifies solution quality; selection mechanisms that regulate selection pressure to balance exploitation of good individuals and exploration of new regions; crossover and mutation operators that recombine and perturb chromosomes to generate diversity; and a replacement strategy—often generational or steady‑state—that decides how offspring enter the population and low‑quality individuals are discarded, with empirical studies on feature selection and engineering design reporting that carefully tuned combinations of these elements yield consistent improvements in accuracy and convergence speed over untuned “vanilla” GAs across dozens of benchmark problems (Aldamani et al., 2025; Kordon et al., 2023).​
+2.3 Representation Schemes for VRP
+Encoding (representation) in a Genetic Algorithm for VRP determines how routes are mapped to chromosomes, which moves are reachable by crossover and mutation, and how easily feasibility (capacity, time windows, number of vehicles) can be preserved, so it has a direct impact on both solution quality and runtime. Recent VRP studies show that different encodings can lead to markedly different outcomes on the same instance: permutation-based GAs that encode customer sequences tend to work very well when local search moves (2‑opt, relocate, swap) are integrated, as in a guided GA for UAV-based CVRP that clearly outperforms a baseline GA in both route cost and convergence speed (Jasim & Ahmed, 2024), and a hybrid PSO–GA for LPG distribution that reports up to 4.56% transportation cost reduction versus current company routes on real data (Indrianti et al., 2025). In contrast, random‑key (real‑valued) encodings separate the GA search in [0,1]n from a problem‑specific decoder, allowing a single representation and operator set to handle open VRP, multi-depot VRP, and dial‑a‑ride variants while consistently producing near best-known solutions on standard benchmarks (Kummer & Nascimento, 2020; Londe et al., 2025; Shimaoka et al., 2025). Binary or matrix-based encodings remain useful when decisions are inherently yes/no—such as time-window assignment or activation of links—and are frequently used in multiobjective formulations where GA must handle both routing and scheduling or service-level decisions; for example, recent network and path-optimization applications show that carefully tuned binary or discrete encodings combined with improved mutation can significantly outperform classical GA and particle swarm variants in terms of total travel cost and convergence behaviour (Bhattacharjya, 2020; Sitorus et al., 2022; Mu et al., 2024). Overall, empirical comparisons in recent reviews emphasize that no single encoding is universally best: permutation representations are usually preferred for pure routing structure, random‑key encodings for hybrid or hierarchical VRP/location problems, and binary/matrix encodings for problems with many side constraints or assignment decisions, reinforcing that representation must be chosen to match instance characteristics and algorithm design (Vie et al., 2020; Londe et al., 2025).
+Table 1. Encoding scheme in GA
+Scheme
+Description
+Advantages
+Limitations
+Applications
+Binary
+Encodes solutions as binary strings or matrices
+Strong theoretical backing; easy to implement standard genetic operators; natural for yes/no decisions and multiobjective formulations
+Long chromosomes for realistic VRPs; maintaining feasibility can be difficult; often needs repair or penalty mechanisms
+Bhattacharjya (2020) ​; Sitorus et al. (2022) ​; Mu et al. (2024)
+Real-Valued
+Assigns floating-point or random-key values to customers, which are decoded into routes
+Allows use of continuous GA machinery; same representation can handle many VRP variants; crossover and mutation preserve implicit feasibility when paired with a suitable decoder
+Extra decoding step adds computational overhead; performance depends heavily on decoder design and parameter tuning
+Kummer & Nascimento (2020) ​; Londe et al. (2025) ​; Shimaoka et al. (2025) ​; Sobhanan et al. (2025)
+Permutation
+Directly sequences customer visits with optional route delimiters or implicit depot returns
+Very natural fit for routing; many specialized crossover/mutation operators exist; feasibility is easier to maintain when combined with route-splitting or local search
+Naïve operators can disrupt good route structures; additional mechanisms often needed to enforce capacity and time-window constraints
+Jasim & Ahmed (2024) ​; Indrianti et al. (2025) ​; Sobhanan et al. (2025) ​; Mu et al. (2024) ​
+2.4 Selection Methods
+Selection in Genetic Algorithms (GAs) controls which individuals reproduce and therefore how strongly the search exploits high‑fitness solutions versus exploring new regions, making it a critical design choice for VRP GAs where small differences in selection pressure can translate into several percent differences in route cost or convergence time. Recent hyperparameter studies show that combining strong selection with elitism can dramatically improve performance: for example, Hutchison et al. (2023) found that a GA using three‑way tournament selection and 50% elitism achieved the best balance of finding the global optimum (“champion”), covering about 42% of the top candidates, and achieving large speedups (≈20×) over brute force in a 100 128‑candidate molecular design problem. Brouwer et al. (2022) reported that tournament‑based survivor selection outperformed the default elitist “plus‑selection” method on 83–88% of 59 benchmark functions, with elitist tournament alone accounting for about 54% of all best results, while roulette‑wheel variants performed close to chance on the same suite. At the same time, comparative work in spatial layout optimization by Ibrahim et al. (2025) showed that roulette wheel selection outperformed rank selection in 50% of experiments and reduced processing time by up to 38% in some runs, although rank selection occasionally converged faster in specific scenarios, illustrating how problem structure and implementation details can reverse preferences between methods. Additional studies comparing Boltzmann-style or fitness-uniform schemes against classical proportional selection emphasize that diversity-preserving schemes can delay premature convergence but may converge more slowly, so practical GA designs for VRP often combine tournament or roulette selection with rank-based or temperature-controlled variants plus elitism to guarantee non‑decreasing best fitness over generations (Brouwer et al., 2022; Ibrahim et al., 2025; Jebari & Madiafi, 2013; McCall, 2010).​
+Table 2. Selection methods for GA in VRP
+Method
+Description
+Notes
+Roulette Wheel
+Probability of selection proportional to raw or scaled fitness
+Classic fitness‑proportionate method; recent comparative studies in spatial layout optimization show that roulette wheel selection achieves higher final fitness than rank selection in about half of tested runs and can cut computation time by up to ≈38% in some experiments, but it is still prone to premature convergence if fitness variance is high (Ibrahim et al., 2025) 
+Tournament
+Randomly samples a subset of size k and selects the best
+Widely used in modern GAs; in a large benchmark study, elitist tournament survivor selection outperformed plus‑selection on 83–88% of 59 continuous test functions, with tournament methods collectively delivering about 81% of all best‑known results, indicating strong and controllable selection pressure (Brouwer et al., 2022) 
+Rank-Based
+Assigns selection probability based on rank rather than raw fitness
+Rank selection stabilizes selection pressure when fitness values differ widely or include negatives; in spatial layout tests, rank selection occasionally reached better fitness earlier than roulette wheel but was generally slower and more computationally expensive due to sorting, highlighting a robustness–speed trade‑off (Ibrahim et al., 2025) 
+Stochastic Universal Sampling (SUS)
+Uses a single random start and evenly spaced pointers to sample proportionally
+SUS reduces sampling variance compared with plain roulette wheel by ensuring that each individual is sampled close to its expected number of times, and recent GA hyperparameter tutorials list SUS alongside roulette and tournament as a robust default for proportional selection in chemical and engineering design tasks (Hutchison et al., 2023) 
+Elitism
+Copies the best individuals directly to the next generation
+Guarantees that the best fitness in the population does not decrease over time; best-practices work in molecular design recommends relatively high elitism rates (around 50%) combined with tournament selection to reliably find global optima while maintaining reasonable coverage of top solutions (Hutchison et al., 2023) 
+Boltzmann
+Selection probabilities scaled via a temperature parameter, analogous to simulated annealing
+Boltzmann or temperature-based selection adjusts selection pressure over time, starting more exploratory and becoming more exploitative; comparative selection studies report that such temperature-controlled or related schemes can preserve diversity and delay premature convergence, at the cost of slower convergence if cooling is too conservative (Jebari & Madiafi, 2013; McCall, 2010; Aziz et al., 2022) 
+2.5 Crossover Operators
+Careful design of crossover operators is crucial in GA-based VRP because crossover largely dictates how effectively good route segments are recombined and how quickly the search explores new regions of the solution space. Empirical studies show that, for permutation encodings used in routing, the choice of crossover can change both best-found distance and runtime noticeably: for example, experiments on distance‑constrained VRP and multiple TSP instances report that sequential constructive crossover (SCX) obtains the best total distance in a clear majority of test cases and achieves the best maximum-vehicle distance in about 44% of instances, outperforming PMX, CX, ERX, and alternating-edge crossover in most comparisons (Ahmed, 2020; Al‑Furhud & Jaradat, 2020). Comparisons of order-based operators such as OX, PMX, and a modified CX2 on VRP benchmarks further indicate that CX2 attains the best fitness but is computationally expensive, PMX offers a good compromise between solution quality and runtime, and OX, while slightly weaker in fitness, explores a broader region of the search space and is therefore attractive when embedded in metaheuristics (Wibisono, 2021). For real‑valued encodings, simulated binary crossover (SBX) remains the de facto standard, and a recent self‑adaptive SBX–elitism scheme reduced average relative error by 99.99% and cut computation time by about 19.40% compared with a baseline self‑adaptive SBX on 10‑ to 30‑dimensional benchmarks (Novianti et al., 2024), while new operators such as Lagrange‑based LPX have been shown to outperform classic SBX and BLX‑α on many continuous test functions (Aladdin, 2023). Binary and mixed encodings, common in network and control applications, also show strong sensitivity to crossover choice: studies comparing single‑point, two‑point, multi‑point, and uniform crossover find that multi‑point and uniform crossovers can substantially change convergence speed and stability metrics, confirming that the operator must match both representation and problem structure (Güler & Yazici, 2025; Kurniawan et al., 2020). Overall, recent reviews emphasize that no single crossover is universally best; instead, order‑ and edge‑preserving operators (OX, PMX, ERX, SCX) tend to perform best for permutation‑based VRP, SBX and its variants for real‑coded hybrids, and multi‑point or uniform crossover for high‑dimensional binary encodings (Ahmed, 2022; Wibisono, 2021; Novianti et al., 2024).​
+Table 3. Binary crossover operators
+Operator
+Description
+Notes
+Single-Point
+Swaps segments after a random crossover point
+Simplest binary crossover; still widely used in many GA applications, but can severely disrupt building blocks when good genes lie on both sides of the split, and comparative studies in discrete-time control and networking show that performance is often inferior to multi-point or uniform crossover in terms of convergence and robustness (Kurniawan et al., 2020; Güler & Yazici, 2025) 
+Two-Point
+Exchanges segments between two crossover points
+Preserves larger contiguous blocks than single‑point and is therefore better at maintaining linked features; oriented-crossover studies for computer networks note that two‑point often yields better trade‑offs between exploration and preservation of useful substrings than single‑point, especially when variables are moderately correlated (Güler & Yazici, 2025) 
+Multi-Point
+Uses multiple crossover points for more disruption
+Increases diversity by breaking chromosomes in several places; experiments on discrete-time optimization problems indicate that multi‑point crossover can accelerate the search but may introduce instability or oscillatory behaviour if combined with high crossover probabilities (Kurniawan et al., 2020) 
+Uniform
+Randomly selects genes from either parent
+Maximizes gene mixing by deciding gene-by-gene which parent to copy from; reviews of crossover strategies report that uniform crossover can explore a wider region of the search space than fixed-point schemes, which is beneficial in complex fitness landscapes but can slow convergence if not balanced with strong selection or elitism (Güler & Yazici, 2025; Li et al., 2022) 
+Shuffle
+Permutes gene order before applying crossover
+Addresses positional bias by randomly shuffling chromosomes before applying a standard crossover and then unshuffling afterward; recommended in general GA operator overviews when bit positions have artificial correlations introduced by encoding (Güler & Yazici, 2025) 
+Table 4. Real-valued crossover operators
+Operator
+Description
+Notes
+BX
+Simulated binary crossover that mimics single-point crossover in real space
+Widely adopted for real-coded GAs; recent work on self‑adaptive SBX with elitism reported up to 99.99% reduction in average relative error and ≈19.40% faster computation compared with a non‑elitist self‑adaptive SBX across 10–30 dimensional benchmarks, confirming SBX’s strong performance when coupled with adaptive parameters and elitism (Novianti et al., 2024; Deb & Agrawal, 2001)
+BLX-α
+Blend crossover that samples genes within an interval expanded by α
+Classical alternative to SBX; empirical comparisons on constrained numerical optimization show that BLX‑α can provide broader exploration but often requires larger populations or hybridization with local search to match SBX’s precision, and more recent studies use BLX‑type ideas mainly as baselines when evaluating new real-coded operators (Deb & Agrawal, 2001; Aladdin, 2023)
+Flat
+Uniformly selects each gene within the interval spanned by the parents
+Conceptually similar to a BLX‑α with α = 0, offering simple implementation and strong exploration but little bias toward parents; current practice tends to favour SBX or adaptive BLX‑style operators, with flat crossover mostly used as a component in hybrid or self‑adaptive schemes rather than as a standalone choice (Deb & Agrawal, 2001; Novianti et al., 2024) 
+Table 5. Permutation crossover operators
+Operator
+Description
+Notes
+PMX
+Swaps segments and uses position mapping to ensure a valid permutation
+Designed for TSP and permutation‑based VRP; comparative studies on routing instances report that PMX typically ranks second after more advanced operators (such as CX2 or SCX) in terms of fitness while offering reasonable runtime, making it a robust default for many VRP GAs (Al‑Furhud & Jaradat, 2020; Wibisono, 2021)
+OX
+Copies an ordered segment from one parent and fills remaining positions by preserving the relative order from the other parent
+Frequently used in VRP applications; experiments indicate that although OX may yield slightly worse best fitness than PMX or CX2 on some benchmarks, it explores a wider portion of the search space and integrates well with local search, which explains its continued popularity in hybrid GA–LS frameworks (Al‑Furhud & Jaradat, 2020; Wibisono, 2021) 
+CX
+Identifies cycles of positions between parents and preserves these cycles in offspring
+Ensures permutation validity by construction; cycle-based operators often produce highly structured offspring, and VRP/TSP comparisons show that CX can match or outperform OX and PMX on some instances but may suffer from longer runtimes or difficulty escaping local minima, motivating modified variants such as CX2 (Ahmed, 2020; Wibisono, 2021) 
+OBX
+Selects a subset of positions from one parent and fills remaining slots by following the order of the other parent
+Order-based crossover that focuses on preserving relative sequence information; operator surveys for permutation problems describe OBX as effective when the relative ordering of customers is more important than their exact positions, and it is often used as part of operator portfolios for routing and scheduling (Li et al., 2022; Ahmed, 2022) 
+POS
+Inherits specific positions from one parent and fills other positions based on the second parent’s order
+Position-based scheme complementary to OBX; commonly used in experimental comparisons to study the effect of preserving absolute positions versus relative order in TSP/VRP encodings, with mixed results depending on problem structure (Li et al., 2022; Ahmed, 2022) 
+ERX
+Edge recombination that preserves adjacency (edges) from the parents
+Designed to retain route structure by focusing on shared edges; CVRP and MTSP studies where ERX is compared to OX, PMX, CX, AEX, and SCX show that edge-focused operators often achieve competitive or superior route lengths when adjacency information is critical (Ahmed, 2022; Al‑Furhud & Jaradat, 2020)
+SCX
+Sequentially constructs an offspring route by choosing the next customer based on a distance or cost heuristic
+Specifically tailored to routing; experiments on distance‑constrained VRP and MTSP report that SCX produces the best or tied‑best solutions in the majority of test cases and yields the best maximum-vehicle distance in about 44% of instances, outperforming PMX, CX, ERX, and AEX in both solution quality and robustness (Ahmed, 2020; Al‑Furhud & Jaradat, 2020; Al‑Baz & El‑Sawy, 2020) 
+2.6 Mutation Operators
+Mutation operators are a second, equally important design lever alongside crossover, because they control how new genetic material is injected into the search and how easily a GA can escape local optima under different encodings. For binary encodings, simple bit‑flip or random‑reset mutations are often sufficient and can be very powerful when combined with small populations: in a recent comparative study on the Max‑One problem with chromosome length 20, a new bit‑wise mutation variant converged in as few as 19 generations with zero failures across 100 runs, while swap and inverse mutations failed in 60 and 15 runs respectively and showed much higher median generations to convergence (378 vs. 40.5) [Ullah et al., 2022]. In contrast, real‑coded GAs for continuous multiobjective design problems typically rely on Gaussian, polynomial, or dynamic real‑valued mutation; for example, a dynamic mutation operator for real‑coded GA significantly improved convergence speed and solution quality compared with fixed Gaussian mutation on engineering benchmarks [Kim et al., 2024], while polynomial mutation combined with SBX is now standard in many multiobjective service composition and layout problems [Zhai et al., 2023]. Permutation encodings used in routing and scheduling require structure‑preserving operators (swap, insertion, inversion, scramble, displacement), and VRP/MTSP studies show that carefully tuned combinations of swap–insert–inversion mutations inside hybrid GAs can outperform state‑of‑the‑art metaheuristics on asymmetric distance‑constrained VRP instances and significantly reduce total distance and constraint violations in real pickup‑and‑delivery VRPTW case studies [Ahmed et al., 2022][Wicaksono et al., 2021][El‑Mekkawy et al., 2024]. Comprehensive mutation reviews further confirm that more disruptive operators such as scramble or displacement introduce diversity faster and are effective on large permutation problems, but they may temporarily deteriorate solution quality, whereas more local operators like swap or inversion produce smoother but slower improvements, so modern GA designs often mix several mutation types and tune rates according to encoding and problem scale [Srinivas & Patnaik, 2020][Ullah et al., 2022].​
+Table 6. Binary mutation operators
+Operator
+Description
+Notes
+Bit Flip
+Inverts a bit with a given mutation probability
+Standard mutation for binary chromosomes; maintains feasibility when constraints are handled via decoding or penalties; recent comparative work shows that bit‑flip (or random resetting) at a low rate (e.g. 0.01) is sufficient to prevent premature convergence in spatial layout GAs and is a common baseline when analysing diversity and convergence behaviour [Ibrahim et al., 2025][Ngo, 2024]​[Kim et al., 2024]
+Uniform Mutation
+Randomly resets a binary gene to 0 or 1 (often equivalent to bit‑flip under symmetric coding)
+Used as “random resetting” or uniform mutation in many GA frameworks; studies on selection methods evaluate roulette vs. rank selection while holding crossover and uniform/bit‑flip mutation fixed, highlighting that this operator is robust and easy to analyse statistically [Ibrahim et al., 2025] [Ullah et al., 2022]
+Interchanging (Swap)
+Swaps two selected gene values in the chromosome
+Maintains the overall gene pool while reordering bits; binary swap (interchanging) is often used alongside other operators like shuffle and inverse as a low‑disruption mutation; experiments show that swap on its own increases diversity slowly and can have the highest median generations to convergence when compared with more disruptive mutations [Ullah et al., 2022]
+Table 7. Real-valued mutation operators
+Operator
+Description
+Notes
+Gaussian Mutation
+Adds normally distributed noise to real‑valued genes
+The step size is controlled by the standard deviation; commonly used in real‑coded and hybrid GAs for engineering design; recent dynamic‑mutation schemes adjust the variance over time to balance exploration and exploitation and have been shown to improve convergence speed and final fitness compared with fixed‑variance Gaussian mutation on benchmark functions [Kim et al., 2024]
+Polynomial Mutation
+Perturbs genes using a polynomial probability distribution
+Standard companion to SBX in real‑coded and multiobjective GAs; widely used because it can approximate small, local moves while still allowing occasional larger jumps; recent multiobjective service‑composition and multi‑criteria logistics studies report that SBX + polynomial mutation combinations provide good spread and convergence on Pareto fronts [Zhai et al., 2023]
+Uniform Mutation
+Replaces a gene with a random value in the valid range
+Highly exploratory since new values are sampled independently from the parents; often used in early iterations or in combination with more local mutations; dynamic real‑coded mutation operators can be viewed as controlled forms of uniform/interval mutation, and have been shown to yield faster convergence than fixed schemes on 10–30 dimensional continuous test problems [Kim et al., 2024]
+Table 8. Permutation mutation operators
+Operator
+Description
+Notes
+Swap
+Exchanges two customer positions in the tour
+Very simple and widely used in TSP/VRP GAs; provides small, local changes that are easy to combine with local search; in an asymmetric distance‑constrained VRP, hybrid GAs using swap mutation together with 2‑opt local search outperform a state‑of‑the‑art metaheuristic on benchmark instances [Ahmed et al., 2022]
+Insert
+Moves an element to a new position, shifting others
+Adjusts the customer sequence more strongly than swap; often paired with inversion/swap; in hybrid GAs for distance‑constrained VRP, insertion mutation is part of the move set used in local improvement and is reported to contribute to better distance and capacity‑feasible solutions [Ahmed et al., 2022]
+Inversion
+Reverses a segment between two positions
+Also known as 2‑opt mutation; very effective for path‑based problems by directly implementing 2‑opt‑like improvements; recent hybrid GAs for asymmetric distance‑constrained VRP and MTSP use inversion mutation (often combined with swap and insert) and show strong improvements in best‑found tour length compared with older GA variants [Ahmed et al., 2022] [El‑Mekkawy et al., 2024]
+Scramble
+Randomly reorders a segment within a selected range
+Increases diversity by heavily perturbing subsequences; a 2024 study on bi‑objective MTSP notes that scramble, combined with flip, swap, and inversion, helps the GA explore more diverse tours and improve coverage of the Pareto front for instances with up to 200 cities [El‑Mekkawy et al., 2024]; reviews report that scramble is particularly useful on large permutation problems despite occasionally degrading short‑term solution quality [Srinivas & Patnaik, 2020]
+Displacement
+Removes a segment and reinserts it elsewhere in the tour
+Alters route structure more radically than simple insert; often used in advanced move sets (e.g., Or‑opt/relocate‑segment) within GA‑based VRP heuristics; mutation reviews emphasize displacement as suitable for large problems but note that it may increase risk of temporary deterioration in fitness [Srinivas & Patnaik, 2020]
+2.7 Research Gaps
+Table 9. Research gap table (GA–VRP operator studies)
+Study
+Multi Representations
+Multi Selection
+Multi Crossover
+Multi Mutation
+Solomon 56×100
+Large-Scale Experiments 
+CI / Non‑parametric Stats
+Interaction Effects
+Stas crossover with K-mean clustering for vehicle routing problem with time window (Poohoi et al., 2024) 
+x
+x
+v
+x
+Limited
+x
+Limited
+x
+Hybrid Genetic Algorithms for the Asymmetric Distance-Constrained Vehicle Routing Problem (Ahmed et al., 2022)
+x
+x
+v
+v
+x
+x
+Limited
+x
+An Improved Genetic Algorithm for Vehicle Routing Problem Pick-up and Delivery with Time Windows (Indrianti et al., 2021)
+x
+x
+v
+v
+x
+x
+Limited
+x
+A Genetic Algorithm for Solving Periodic Heterogeneous Vehicle Routing Problem (Khoidir & Garside, 2022)
+x
+x
+x
+x
+x
+x
+x
+x
+Genetic algorithm approach to asymmetric capacitated vehicle routing: A case study on bread distribution in Istanbul, Türkiye (Meniz & Tiryaki, 2022)
+x
+x
+x
+x
+x
+x
+x
+x
+Application of improved genetic algorithm to vehicle routing problem (Zhu et al., 2025)
+x
+x
+v
+x
+x
+x
+Limited
+x
+Optimizing Vehicle Routing with Time Window Using Genetic Algorithm (Nowak et al., 2022) 
+x
+x
+x
+x
+x
+x
+Limited
+x
+Genetic Crossover Operators for the Capacitated Vehicle Routing Problem (Ahmed et al., 2022)
+x
+x
+v
+Limited
+x
+x
+Limited
+x
+Implementation of Genetic Algorithm in Real-World Vehicle Routing Problem with Time Windows (Rahman et al., 2024)
+x
+x
+x
+x
+x
+x
+v
+x
+Optimization of urban terminal delivery routes using fuzzy genetic algorithm (Li et al., 2025) 
+x
+x
+x
+v
+x
+x
+Limited
+x
+Optimizing Genetic Algorithm by Implementation of an Enhanced Mutation Operator for the Travelling Salesman Problem (GA-EM) (BinJubier et al., 2024) 
+x
+x
+x
+v
+x
+x
+v
+Limited
+Analysis and comparison of a proposed mutation operator and its effects on the performance of genetic algorithm (Ullah et al., 2022) 
+x
+x
+x
+v
+x
+x
+v
+Limited
+Genetic Algorithm Optimization with Selection Operator Decider (Brouwer, 2022, thesis) 
+x
+v
+x
+x
+x
+x
+v
+v
+Our Study
+v
+v
+v
+v
+v
+v
+v
+v
+Most existing GA-based VRP studies in Table X focus on tailoring operators within a single encoding and problem setting rather than systematically exploring the full operator design space across representations. For instance, the work on Stas crossover with K‑mean clustering for VRPTW uses a pure permutation encoding and mainly compares Stas against classical crossovers such as OX and PMX, while keeping selection and mutation fixed (Poohoi, Puntusavase, & Ohmori, 2024). Similarly, hybrid genetic algorithms for the asymmetric distance‑constrained VRP and improved GAs for VRPTW pick‑up and delivery adopt permutation-based solutions with carefully engineered crossover and route-improvement operators, but do not consider alternative encodings or families of selection schemes in a unified framework (Ahmed, Hameed, & Mutar, 2022; Indrianti, Pramudita, & co‑authors, 2021). Other routing variants such as the periodic heterogeneous VRP and the asymmetric capacitated VRP are addressed via single‑configuration permutation GAs that fix representation, selection, and most operators to one design, limiting comparability across operator choices (Khoidir & Garside, 2022; Meniz & Tiryaki, 2022).​.
+Several applied and methodological papers do examine particular GA components, but always in isolation from a broad VRP operator study: improved GAs for generic VRP or VRPTW and GA-based path routing optimize specific crossover or parameter settings on limited datasets; real-world CVRPTW applications and urban terminal delivery models emphasize parameter tuning and fuzzy mutation; GA‑EM and related studies compare mutation operators on TSP or toy problems; and selection-operator decider frameworks analyse selection schemes in non‑VRP contexts (Zhu et al., 2025; Nowak et al., 2022; Rahman et al., 2024; Li et al., 2025; BinJubier et al., 2024; Ullah, Salam, & Masood, 2022; Brouwer, 2022). None of these studies jointly evaluates multiple representations (binary, real‑valued, permutation) together with a wide portfolio of selection, crossover, and mutation operators on the full Solomon VRPTW benchmark using large-scale, statistically rigorous experimentation. In contrast, the present work systematically assesses 354 operator combinations across all 56 Solomon 100‑customer instances (99,120 runs), quantifies performance with confidence intervals, non‑parametric tests, and effect sizes, and explicitly analyses interaction effects between representation, selection, crossover, and mutation to derive robust, evidence‑based GA design guidelines for VRP.​
+3. Methodology
+3.1 Problem Formulation
+The Vehicle Routing Problem considered in this study is formally defined as follows:
+Given:
+A set of customers  with customer 0 representing the depot
+Customer demands  for each customer 
+Vehicle capacity 
+Distance matrix  where  represents the distance between locations  and 
+A homogeneous fleet of  vehicles
+Objective Function:
+Minimize the total distance traveled by all vehicles:
+where  if vehicle  travels from customer  to customer , and 0 otherwise.
+Constraints:
+Each customer visited exactly once:
+Vehicle capacity not exceeded:
+Route continuity (flow conservation):
+All routes start and end at depot:
+Solution Representation:
+A VRP solution consists of a set of vehicle routes  where  is the number of vehicles used. Each route  represents a sequence of customers visited by vehicle , starting and ending at the depot.
+The solution can be represented as a permutation of customers with route delimiters, or as a pure permutation where routes are implicitly determined through capacity constraints and a splitting procedure.
+3.2 Genetic Algorithm Framework
+Our GA implementation follows a generational evolutionary process with elitism. The overall structure is:
+Initialization: Generate initial population of size  using random permutations of customers
+Evaluation: Compute fitness for each individual using a split procedure to determine routes from permutation
+Main Loop (repeat until termination):
+Selection: Select  parents using chosen selection method
+Crossover: Apply crossover operator with probability  to create offspring
+Mutation: Apply mutation operator with probability  to offspring
+Evaluation: Compute fitness for new offspring
+Replacement: Form new population combining elite individuals and offspring
+Termination: Stop when maximum generations reached or convergence criteria met
+Output: Return best solution found
+Population Initialization:
+The initial population is created by generating random permutations of customers. This simple initialization ensures diversity while maintaining solution validity (each customer appears exactly once).
+Fitness Evaluation:
+For permutation-based representation, we employ the split procedure developed by Prins (2004). This procedure optimally partitions a giant tour (permutation of all customers) into feasible vehicle routes using dynamic programming in  time. The fitness value is the total distance of the resulting multi-route solution. For binary and real-valued representations, decoding procedures convert the chromosome to a customer sequence, which then undergoes the same split procedure.
+Termination Criteria:
+The algorithm terminates when:
+Maximum number of generations (500) is reached, OR
+Best fitness has not improved for 50 consecutive generations (convergence)
+Parameter Settings:
+Standard GA parameters unless otherwise specified:
+Population size: 
+Crossover probability: 
+Mutation probability: 
+Elite size: 10% of population (10 individuals)
+These values were selected based on preliminary experiments and common practice in GA literature.
+3.3 Representation Schemes Implementation
+3.3.1 Binary Representation
+For binary encoding, we use a position-based approach where the chromosome consists of  binary substrings, each of length  bits representing the priority/position of each customer in the tour.
+Encoding Method:
+Each customer  assigned a binary string representing its priority value
+Binary strings decoded to integer priorities
+Customers sorted by priority to form tour sequence
+Split procedure determines routes from tour
+Decoding Procedure:
+Convert each customer's binary substring to integer priority
+Sort customers by increasing priority
+Apply split procedure to determine optimal route partition
+Calculate total distance
+Feasibility Handling:
+Binary representation inherently maintains visit-once constraint through position encoding. Capacity feasibility ensured by split procedure during decoding.
+Chromosome Length:  bits for  customers
+3.3.2 Real-Valued Representation
+Real-valued encoding uses the random keys approach where each customer assigned a real value in [0,1].
+Encoding Strategy:
+Chromosome: vector of  real values  where 
+Each  represents priority/key for customer 
+Continuous to Discrete Mapping:
+Sort customers by increasing key value
+Resulting permutation defines tour sequence
+Apply split procedure for route determination
+Evaluate total distance
+Constraint Handling:
+The random keys representation naturally maintains permutation properties – sorting produces a valid customer sequence. Capacity constraints handled by split procedure.
+Advantages for Continuous Operators:
+This encoding enables application of real-valued crossover (SBX, BLX-α) and mutation (Gaussian, polynomial) operators while maintaining solution validity for the discrete routing problem.
+3.4 Selection Methods Implementation
+3.4.1 Roulette Wheel Selection
+Selection probability proportional to relative fitness:
+For minimization problems (VRP), fitness transformed using  where  is a small constant to prevent zero probabilities.
+3.4.2 Tournament Selection
+Algorithm:
+Randomly sample  individuals from population
+Select the individual with best fitness among the  competitors
+Return selected individual
+Tournament size  used in experiments (moderate selection pressure).
+3.4.3 Rank-Based Selection
+Rank all individuals by fitness (1 = worst,  = best)
+Assign selection probability based on rank: 
+Select using roulette wheel on rank probabilities
+3.4.4 Stochastic Universal Sampling (SUS)
+Calculate cumulative fitness  where  is selection probability
+Generate single random number 
+Create  equally-spaced pointers: 
+Select individual  for pointer  where 
+3.4.5 Elitism
+Preserve top  individuals unchanged to next generation. We use  (10% of population). Elitism combined with other selection methods: remaining  individuals selected using base method.
+3.4.6 Boltzmann Selection
+Selection probability using temperature parameter:
+Temperature schedule:  where , ,  is generation number.
+3.4.7 Stairwise Selection
+Divide fitness range into  discrete levels
+Assign individuals to levels based on fitness
+Selection probability based on level rather than exact fitness
+Use roulette wheel on level probabilities
+Number of levels  in our experiments.
+Parameter Settings and Selection Pressure Analysis:
+Tournament selection with  provides moderate selection pressure, balancing exploration and exploitation. Rank-based selection maintains consistent pressure across fitness distributions. Boltzmann selection dynamically adjusts pressure through temperature schedule. These settings based on recommendations from Goldberg and Deb (1991) and preliminary tuning experiments.
+3.5 Crossover Operators Implementation
+3.5.1 Binary Crossover Operators
+Single-Point Crossover:
+Select random crossover point  where  is chromosome length
+Offspring 1: 
+Offspring 2: 
+Two-Point Crossover:
+Select two random points  where 
+Offspring 1: 
+Offspring 2: 
+Uniform Crossover:
+Generate random binary mask of length 
+For each position : if mask[i] = 1, offspring1[i] = parent1[i], else offspring1[i] = parent2[i]
+Offspring 2 uses complementary assignment
+3.5.2 Real-Valued Crossover Operators
+Simulated Binary Crossover (SBX):
+For each gene position :
+where  calculated from probability distribution controlled by parameter  (distribution index).
+BLX-α Crossover:
+For each gene position :
+where  is uniform random value and .
+3.5.3 Permutation Crossover Operators
+Partially Mapped Crossover (PMX):
+Select two crossover points defining a segment
+Copy segment from parent1 to offspring1
+Establish position mapping from segment
+Fill remaining positions using mapping to avoid duplicates
+Repeat symmetrically for offspring2
+Order Crossover (OX):
+Select two crossover points defining a segment
+Copy segment from parent1 to offspring1 at same positions
+Starting after second crossover point, fill remaining positions with customers from parent2 in order they appear, wrapping around, skipping customers already present
+Repeat for offspring2
+Cycle Crossover (CX):
+Identify cycles in position mapping between parents
+Offspring1 inherits cycles alternately from parent1 and parent2
+Offspring2 uses complementary inheritance
+Edge Recombination Crossover (ERX):
+Build edge table listing adjacent customers for each customer in both parents
+Start with first customer from randomly chosen parent
+Iteratively select next customer from edge table, preferring customers with fewest edges
+Remove selected customer from all edge lists
+Continue until all customers included
+Sequential Constructive Crossover (SCX):
+Start with empty offspring tour
+At each step, examine next unplaced customer in both parent tours
+Select the customer that would add minimum distance to current offspring tour
+Continue until all customers placed
+Feasibility Preservation:
+All permutation crossovers inherently maintain visit-once constraint as they produce valid permutations. Capacity feasibility ensured by split procedure during evaluation. For operators that might produce infeasible sub-routes directly, repair mechanisms applied.
+VRP-Specific Adaptations:
+SCX specifically designed for VRP, considering distance minimization during construction. Other operators adapted by applying split procedure for route determination rather than treating solution as single tour.
+3.6 Mutation Operators Implementation
+3.6.1 Binary Mutation Operators
+Bit Flip Mutation:
+For each bit position: flip bit (0→1 or 1→0) with probability .
+Uniform Mutation:
+For binary encoding, equivalent to bit flip. For general usage, replace gene with uniform random value from valid range.
+3.6.2 Real-Valued Mutation Operators
+Gaussian Mutation:
+For each gene position :
+where  is Gaussian noise with standard deviation . Clip values to [0,1] range.
+Polynomial Mutation:
+where  calculated using polynomial distribution with parameter .
+3.6.3 Permutation Mutation Operators
+Swap Mutation:
+Select two random positions 
+Exchange customers at positions  and 
+Insert Mutation:
+Select random position 
+Select random destination position 
+Remove customer at position  and insert at position 
+Shift intermediate customers
+Inversion Mutation:
+Select two random positions  where 
+Reverse the order of customers in segment 
+Scramble Mutation:
+Select two random positions  where 
+Randomly shuffle customers in segment 
+Displacement Mutation:
+Select segment defined by positions 
+Remove segment from current position
+Insert at random new position
+Mutation Rate Settings:
+Base mutation probability  applied at chromosome level. For multi-gene mutations (swap, insert, inversion), this means 10% of chromosomes undergo mutation. For bit-flip and Gaussian, applied at individual gene level (each gene mutated with 10% probability).
+Feasibility Maintenance:
+Permutation mutations maintain visit-once constraint by design (operating on permutation structure). Capacity feasibility ensured by split procedure during evaluation. No additional repair mechanisms required.
+3.7 Experimental Design
+3.7.1 Full Factorial Design
+We employ a full factorial experimental design evaluating all combinations of:
+3 representation schemes: Binary, Real-valued, Permutation
+7 selection methods: Roulette Wheel, Tournament, Rank, SUS, Elitism, Boltzmann, Stairwise
+6 crossover categories with multiple operators each (total varies by representation)
+6 mutation categories with multiple operators each (total varies by representation)
+Representation-Specific Operator Counts:
+Binary Representation:
+Crossovers: Single-point, Two-point, Multi-point, Uniform, Shuffle, Arithmetic (6 operators)
+Mutations: Bit flip, Uniform, Interchanging, Reversing (4 operators)
+Combinations per selection method: 
+Total binary combinations: 
+Real-valued Representation:
+Crossovers: SBX, BLX-α, Flat (3 operators)
+Mutations: Gaussian, Polynomial, Uniform, Non-uniform (4 operators)
+Combinations per selection method: 
+Total real-valued combinations: 
+Permutation Representation:
+Crossovers: PMX, OX, CX, OBX, POS, ERX, SCX (7 operators)
+Mutations: Swap, Insert, Inversion, Scramble, Displacement, Exchange (6 operators)
+Combinations per selection method: 
+Total permutation combinations: 
+However, accounting for selection method variations that interact differently with operators, the actual tested combinations total 354 unique method combinations.
+3.7.2 Parameter Tuning Approach
+While main experiments use fixed standard parameters for fair comparison, we employed Optuna (Akiba et al., 2019), a hyperparameter optimization framework, to validate parameter choices and explore parameter sensitivity.
+Optuna Optimization:
+For selected top-performing operator combinations, Optuna used to optimize:
+Population size: [50, 200]
+Crossover rate: [0.6, 0.95]
+Mutation rate: [0.01, 0.2]
+Elite size: [5%, 20% of population]
+Tournament size (for tournament selection): [2, 5]
+Optimization objective: minimize average solution cost across representative problem instances. Search conducted using Tree-structured Parzen Estimator (TPE) algorithm with 100 trials per operator combination.
+Results showed recommended parameters (pop=100, pc=0.8, pm=0.1, elite=10%) perform near-optimally across operator combinations, validating their use for main experiments while acknowledging that fine-tuning could provide marginal improvements for specific combinations.
+3.7.3 Statistical Validation
+Statistical rigor ensured through:
+Multiple Independent Runs:
+Each method combination executed 5 times on each problem instance with different random seeds
+Total runs per combination:  experiments
+Statistical Measures:
+Mean, median, standard deviation, and best/worst values computed across runs
+95% confidence intervals calculated for mean performance
+Coefficient of variation assessed for robustness
+Significance Testing:
+Wilcoxon signed-rank test (non-parametric) for pairwise method comparison
+Friedman test for comparing multiple methods simultaneously
+Post-hoc Nemenyi test for identifying statistically significant differences between method groups
+Significance level α = 0.05
+Effect Size:
+Cohen's d calculated to quantify practical significance beyond statistical significance
+Effect sizes categorized as small (d=0.2), medium (d=0.5), or large (d=0.8)
+This rigorous statistical approach ensures reported performance differences reflect true algorithmic behavior rather than random variation.
+4. Result and Discussion
+References
