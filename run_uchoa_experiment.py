@@ -19,7 +19,7 @@ def load_config(config_path: str) -> dict:
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
-def run_uchoa_experiment(sampled_csv_path: str, uchoa_base_path: str, results_dir: str, config_file: str):
+def run_uchoa_experiment(sampled_csv_path: str, uchoa_base_path: str, results_dir: str, config_file: str, instance_name: str = None):
     # Load GA Config
     config = load_config(config_file)
     ga_params = config.get('ga', {})
@@ -41,7 +41,18 @@ def run_uchoa_experiment(sampled_csv_path: str, uchoa_base_path: str, results_di
     uchoa_df = df[df['Dataset'] == 'Uchoa']
     
     instances = uchoa_df['InstanceName'].tolist()
-    print(f"Found {len(instances)} Uchoa instances to process in sample list.")
+    
+    if instance_name:
+        # Filter strictly for this instance, accepting with or without .vrp
+        target = instance_name if instance_name.endswith('.vrp') else f"{instance_name}.vrp"
+        instances = [inst for inst in instances if inst == target]
+        if not instances:
+            print(f"Instance {instance_name} not found in the sampled instances.")
+            # Optionally just add it anyway to allow running outside sample list:
+            instances = [target]
+        print(f"Running specifically for instance: {target}")
+    else:
+        print(f"Found {len(instances)} Uchoa instances to process in sample list.")
 
     # Define Combinations
     combinations = []
@@ -74,7 +85,10 @@ def run_uchoa_experiment(sampled_csv_path: str, uchoa_base_path: str, results_di
     
     # Initialize global checkpoint
     os.makedirs(results_dir, exist_ok=True)
-    checkpoint_file = os.path.join(results_dir, 'checkpoint.json')
+    if instance_name:
+        checkpoint_file = os.path.join(results_dir, f'checkpoint_{instances[0]}.json')
+    else:
+        checkpoint_file = os.path.join(results_dir, 'checkpoint.json')
     checkpoint = SimpleCheckpoint(checkpoint_file)
     
     for filename in instances:
@@ -141,6 +155,7 @@ if __name__ == "__main__":
     parser.add_argument("--instances_dir", type=str, default="data/Uchoa", help="Path to folder containing Uchoa instances files (.vrp)")
     parser.add_argument("--results_dir", type=str, default="results_uchoa", help="Output directory for results")
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to config.yaml")
+    parser.add_argument("--instance", type=str, default=None, help="Process only this specific instance (e.g. X-n819-k171)")
     
     args = parser.parse_args()
     
@@ -148,5 +163,6 @@ if __name__ == "__main__":
         sampled_csv_path=args.sampled_csv,
         uchoa_base_path=args.instances_dir,
         results_dir=args.results_dir,
-        config_file=args.config
+        config_file=args.config,
+        instance_name=args.instance
     )
