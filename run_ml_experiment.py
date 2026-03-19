@@ -20,7 +20,7 @@ from src.crossover.permutation_crossover import get_permutation_crossover
 from src.mutation.permutation_mutation import get_permutation_mutation
 
 # --- APST GA Configuration ---
-APST_METHODS = ['LR', 'SVM', 'RF', 'DT', 'XGB']
+APST_METHODS = ['LR', 'SVM', 'RF', 'DT']
 
 POPULATION_SIZE = 100
 MAX_GENERATIONS = 500
