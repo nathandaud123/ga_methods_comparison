@@ -314,6 +314,31 @@ def worker_func(task):
     df.to_csv(out_file, index=False)
     print(f"Finished {method} on {instance_name}. Best Average: {fitness_avg[-1]:.2f}")
 
+def discover_all_instances(solomon_dir, uchoa_dir):
+    """Auto-discover all .csv (Solomon) and .vrp (Uchoa) files from directories."""
+    discovered = []  # list of (instance_name, dataset_type, category)
+    
+    # Solomon: walk looking for .csv files
+    if os.path.exists(solomon_dir):
+        for root, _, files in os.walk(solomon_dir):
+            for f in sorted(files):
+                if f.lower().endswith('.csv'):
+                    instance_name = os.path.splitext(f)[0]
+                    # Try to get category from subfolder name
+                    category = os.path.basename(root) if root != solomon_dir else ''
+                    discovered.append((instance_name, 'Solomon', category))
+    
+    # Uchoa: walk looking for .vrp files
+    if os.path.exists(uchoa_dir):
+        for root, _, files in os.walk(uchoa_dir):
+            for f in sorted(files):
+                if f.lower().endswith('.vrp'):
+                    instance_name = os.path.splitext(f)[0]
+                    discovered.append((instance_name, 'Uchoa', ''))
+    
+    return discovered
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run AGA (Non-APST) vs APST GA on custom instance")
     parser.add_argument("--sampled_csv", type=str, default="data/sampled_instances.csv", help="Path to sampled_instances.csv")
@@ -321,50 +346,76 @@ def main():
     parser.add_argument("--uchoa_dir", type=str, default="data/Uchoa", help="Path to Uchoa benchmark data")
     parser.add_argument("--results_dir", type=str, default="results_apst_vs_aga", help="Output directory for results")
     parser.add_argument("--methods", type=str, nargs="+", default=METHODS_TO_TEST, help="Methods to run (APST_GA AGA)")
-    parser.add_argument("--instance", type=str, default=None, help="Process only specific instance")
+    parser.add_argument("--instance", type=str, default=None, help="Process only specific instance (can be outside sample list)")
+    parser.add_argument("--all_instances", action="store_true", help="Run ALL instances found in solomon_dir and uchoa_dir directories")
+    parser.add_argument("--exclude_sampled", action="store_true", help="When using --all_instances, skip instances that are already in the sample CSV")
     parser.add_argument("--use_gpu", action="store_true", help="Enable GPU acceleration where possible (cuML/XGBoost)")
     parser.add_argument("--jobs", type=int, default=1, help="Number of parallel processes (1 for sequential, -1 for all cores)")
     
     args = parser.parse_args()
     
-    if not os.path.exists(args.sampled_csv):
-        print(f"Sampled instances CSV not found at {args.sampled_csv}!")
-        return
-        
-    df = pd.read_csv(args.sampled_csv)
-    
     tasks = []
-    if args.instance:
-        target = os.path.splitext(args.instance)[0]
-        match = df[df['InstanceName'].str.startswith(target)]
+
+    # --- Mode 1: Run all instances from directories ---
+    if args.all_instances:
+        all_found = discover_all_instances(args.solomon_dir, args.uchoa_dir)
+        print(f"Discovered {len(all_found)} total instances from directories.")
         
-        if not match.empty:
-            df = match
-            for _, row in df.iterrows():
+        # Optionally exclude those in the sample CSV
+        excluded_names = set()
+        if args.exclude_sampled and os.path.exists(args.sampled_csv):
+            df_sample = pd.read_csv(args.sampled_csv)
+            excluded_names = set(os.path.splitext(n)[0] for n in df_sample['InstanceName'].tolist())
+            print(f"Excluding {len(excluded_names)} instances already in the sample list.")
+        
+        for instance_name, dataset, category in all_found:
+            if instance_name in excluded_names:
+                continue
+            for m in args.methods:
+                tasks.append((instance_name, dataset, category, m, args.solomon_dir, args.uchoa_dir, args.results_dir, args.use_gpu))
+
+    # --- Mode 2: Run a specific single instance ---
+    elif args.instance:
+        target = os.path.splitext(args.instance)[0]
+        
+        # Check if it's in the sample CSV first
+        sampled_match = None
+        if os.path.exists(args.sampled_csv):
+            df_sample = pd.read_csv(args.sampled_csv)
+            match = df_sample[df_sample['InstanceName'].str.startswith(target)]
+            if not match.empty:
+                sampled_match = match
+        
+        if sampled_match is not None and not sampled_match.empty:
+            for _, row in sampled_match.iterrows():
                 dataset = row['Dataset']
                 category = row.get('Category', '')
                 for m in args.methods:
                     tasks.append((target, dataset, category, m, args.solomon_dir, args.uchoa_dir, args.results_dir, args.use_gpu))
         else:
-            print(f"Instance {target} not found in sample list. Will attempt to run anyway by discovering it from directories...")
-            # Guessing dataset: Uchoa usually starts with X-, Solomon takes the rest.
+            print(f"Instance '{target}' not found in sample list. Attempting to discover from directories...")
             dataset_guess = "Uchoa" if target.upper().startswith("X-") else "Solomon"
-            category_guess = "" # Worker func can discover path without category
-            
             for m in args.methods:
-                tasks.append((target, dataset_guess, category_guess, m, args.solomon_dir, args.uchoa_dir, args.results_dir, args.use_gpu))
+                tasks.append((target, dataset_guess, '', m, args.solomon_dir, args.uchoa_dir, args.results_dir, args.use_gpu))
+
+    # --- Mode 3: Default - run sample list only ---
     else:
-        # Run normally for all in df
+        if not os.path.exists(args.sampled_csv):
+            print(f"Sampled instances CSV not found at {args.sampled_csv}!")
+            return
+        df = pd.read_csv(args.sampled_csv)
         for _, row in df.iterrows():
             filename = row['InstanceName']
             dataset = row['Dataset']
             category = row.get('Category', '')
             instance_name = os.path.splitext(filename)[0]
-            
             for m in args.methods:
                 tasks.append((instance_name, dataset, category, m, args.solomon_dir, args.uchoa_dir, args.results_dir, args.use_gpu))
             
     print(f"Total tasks planned: {len(tasks)}")
+    if len(tasks) == 0:
+        print("No tasks to run. Check your arguments.")
+        return
 
     num_workers = mp.cpu_count() if args.jobs == -1 else args.jobs
     if args.use_gpu and args.jobs == -1:
