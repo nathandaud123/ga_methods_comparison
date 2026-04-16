@@ -203,33 +203,73 @@ class WOA(MetaheuristicBase):
 class ACO(MetaheuristicBase):
     def run(self):
         start_time = time.time()
-        pheromone = np.ones((self.num_nodes + 1, self.num_nodes + 1)) * 0.1
+        num_nodes = self.num_nodes
+        # Initialize pheromone with a small positive value
+        pheromone = np.ones((num_nodes + 1, num_nodes + 1)) * 0.1
         alpha, beta, rho, Q = 1.0, 2.0, 0.1, 100.0
         best_fit = float('inf')
         history, div_history = [], []
-        heuristic = 1.0 / (self.dist_matrix + 1e-10)
+        
+        # Pre-calculate heuristic (visibility) powered by beta
+        heuristic_powered = (1.0 / (self.dist_matrix + 1e-10)) ** beta
+        last_div = 0.0
+        
         for it in range(MAX_ITERATIONS):
-            solutions, fits = [], []
+            solutions, fits = [] , []
+            
+            # Pre-calculate attraction matrix (Formula: pheromone * heuristic_powered)
+            attraction = pheromone * heuristic_powered
+            # Convert to nested list for faster per-element access in pure Python loops
+            att_list = attraction.tolist()
+            
             for ant in range(POPULATION_SIZE):
-                unvisited, current_node, path = list(range(1, self.num_nodes + 1)), 0, []
+                unvisited = list(range(1, num_nodes + 1))
+                current_node = 0
+                path = []
+                
                 while unvisited:
-                    probs = np.array([(pheromone[current_node][n]**alpha) * (heuristic[current_node][n]**beta) for n in unvisited])
-                    probs /= probs.sum()
-                    next_idx = np.random.choice(len(unvisited), p=probs)
+                    # Manual construction loop is faster for small/medium D than repeated NumPy slicing
+                    curr_row = att_list[current_node]
+                    scores = [curr_row[n] for n in unvisited]
+                    total_score = sum(scores)
+                    
+                    # Manual sampling: significantly faster than np.random.choice for single samples
+                    r = random.random() * total_score
+                    cumulative = 0.0
+                    next_idx = len(unvisited) - 1 # Default to last
+                    for i, s in enumerate(scores):
+                        cumulative += s
+                        if r <= cumulative:
+                            next_idx = i
+                            break
+                    
                     chosen = unvisited.pop(next_idx)
                     path.append(chosen)
                     current_node = chosen
+                
                 chrom = np.array(path)
                 fit = self.get_fitness(chrom)
-                solutions.append(chrom); fits.append(fit)
-                if fit < best_fit: best_fit = fit
+                solutions.append(chrom)
+                fits.append(fit)
+                if fit < best_fit: 
+                    best_fit = fit
+            
+            # Efficient Evaporation
             pheromone *= (1 - rho)
+            
+            # Fast Vectorized Pheromone Update using np.add.at
             for i in range(POPULATION_SIZE):
-                path_full = [0] + list(solutions[i]) + [0]
-                deposit = Q / fits[i]
-                for k in range(len(path_full) - 1): pheromone[path_full[k]][path_full[k+1]] += deposit
+                sol = solutions[i]
+                idx_from = np.concatenate(([0], sol))
+                idx_to = np.concatenate((sol, [0]))
+                np.add.at(pheromone, (idx_from, idx_to), Q / (fits[i] + 1e-10))
+            
             history.append(best_fit)
-            div_history.append(self.calculate_diversity(solutions))
+            # Calculate diversity every 5 iterations to reduce overhead
+            if it % 5 == 0 or it == MAX_ITERATIONS - 1:
+                last_div = self.calculate_diversity(solutions)
+            div_history.append(last_div)
+            
         return {'best_fitness': best_fit, 'runtime': time.time() - start_time, 'fitness_history': history, 'diversity_history': div_history}
 
 # --- 6. Bee Colony Optimization (BCO) ---
@@ -308,28 +348,48 @@ def worker_func(task, target_dir):
     print(f"Finished {algorithm} on {instance_name}. Best Avg: {df['fitness_average'].iloc[-1]:.2f}")
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description='Run Metaheuristics Comparison')
+    parser.add_argument('algorithm', type=str, nargs='?', default='ALL',
+                        help='Algorithm to run (SA, PSO, GWO, WOA, ACO, BCO, or ALL)')
+    parser.add_argument('--dataset', type=str, choices=['solomon', 'uchoa', 'all'], default='all',
+                        help='Dataset to run (solomon, uchoa, or all)')
+    
+    args = parser.parse_args()
+    
     target_dir = os.path.join(BASE_DIR, "results_metaheuristics")
     solomon_base_dir = os.path.join(BASE_DIR, "data", "solomon")
     uchoa_base_dir = os.path.join(BASE_DIR, "data", "uchoa")
     
-    solomon_files = glob.glob(os.path.join(solomon_base_dir, "**", "*.csv"), recursive=True)
-    uchoa_files = glob.glob(os.path.join(uchoa_base_dir, "*.vrp"))
-    
     all_available = ['SA', 'PSO', 'GWO', 'WOA', 'ACO', 'BCO']
-    if len(sys.argv) > 1 and sys.argv[1].upper() in all_available:
-        algorithms = [sys.argv[1].upper()]
+    if args.algorithm.upper() in all_available:
+        algorithms = [args.algorithm.upper()]
     else:
         algorithms = all_available
     
     tasks = []
-    for f in solomon_files:
-        name = os.path.splitext(os.path.basename(f))[0]
-        for alg in algorithms: tasks.append((f, name, 'Solomon', alg))
-    for f in uchoa_files:
-        name = os.path.splitext(os.path.basename(f))[0]
-        for alg in algorithms: tasks.append((f, name, 'Uchoa', alg))
+    
+    # Add Solomon tasks if requested
+    if args.dataset.lower() in ['solomon', 'all']:
+        solomon_files = glob.glob(os.path.join(solomon_base_dir, "**", "*.csv"), recursive=True)
+        for f in solomon_files:
+            name = os.path.splitext(os.path.basename(f))[0]
+            for alg in algorithms:
+                tasks.append((f, name, 'Solomon', alg))
+                
+    # Add Uchoa tasks if requested
+    if args.dataset.lower() in ['uchoa', 'all']:
+        uchoa_files = glob.glob(os.path.join(uchoa_base_dir, "*.vrp"))
+        for f in uchoa_files:
+            name = os.path.splitext(os.path.basename(f))[0]
+            for alg in algorithms:
+                tasks.append((f, name, 'Uchoa', alg))
         
-    print(f"Total tasks: {len(tasks)} using {mp.cpu_count()} cores.")
+    if not tasks:
+        print(f"No tasks found for dataset: {args.dataset}")
+        return
+
+    print(f"Total tasks: {len(tasks)} ({args.dataset.upper()} dataset, Algorithms: {', '.join(algorithms)}) using {mp.cpu_count()} cores.")
     with mp.Pool(processes=mp.cpu_count()) as pool:
         pool.starmap(worker_func, [(t, target_dir) for t in tasks])
 
