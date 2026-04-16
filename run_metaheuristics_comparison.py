@@ -153,40 +153,50 @@ class GWO(MetaheuristicBase):
                 idx += 1
         return np.array(child)
 
-# --- 4. Firefly Algorithm (FA) ---
-class FA(MetaheuristicBase):
+# --- 4. Whale Optimization Algorithm (WOA) ---
+class WOA(MetaheuristicBase):
     def run(self):
         start_time = time.time()
-        fireflies = [self.representation.create_chromosome() for _ in range(POPULATION_SIZE)]
-        intensity = [self.get_fitness(f) for f in fireflies]
-        alpha, beta0, gamma = 0.5, 1.0, 1.0
+        whales = [self.representation.create_chromosome() for _ in range(POPULATION_SIZE)]
+        fits = [self.get_fitness(w) for w in whales]
+        leader_idx = np.argmin(fits)
+        leader, leader_fit = whales[leader_idx].copy(), fits[leader_idx]
         history, div_history = [], []
-        best_fit = np.min(intensity)
         for it in range(MAX_ITERATIONS):
+            a = 2 - it * (2 / MAX_ITERATIONS)
             for i in range(POPULATION_SIZE):
-                for j in range(POPULATION_SIZE):
-                    if intensity[j] < intensity[i]:
-                        dist = np.sum(fireflies[i] != fireflies[j]) / self.num_nodes
-                        beta = beta0 * np.exp(-gamma * dist**2)
-                        if random.random() < beta: fireflies[i] = self._move_towards(fireflies[i], fireflies[j])
-                        if random.random() < alpha:
-                             idx1, idx2 = random.sample(range(self.num_nodes), 2)
-                             fireflies[i][idx1], fireflies[i][idx2] = fireflies[i][idx2], fireflies[i][idx1]
-                        intensity[i] = self.get_fitness(fireflies[i])
-                        if intensity[i] < best_fit: best_fit = intensity[i]
-            alpha *= 0.99
-            history.append(best_fit)
-            div_history.append(self.calculate_diversity(fireflies))
-        return {'best_fitness': best_fit, 'runtime': time.time() - start_time, 'fitness_history': history, 'diversity_history': div_history}
+                r, p = random.random(), random.random()
+                A = 2 * a * random.random() - a
+                l = (random.random() * 2) - 1
+                if p < 0.5:
+                    if abs(A) < 1: whales[i] = self._move_towards(whales[i], leader, magnitude=abs(A))
+                    else:
+                        rand_whale = whales[random.randrange(POPULATION_SIZE)]
+                        whales[i] = self._move_towards(whales[i], rand_whale, magnitude=abs(A))
+                else:
+                    whales[i] = self._move_towards(whales[i], leader, magnitude=np.exp(l))
+                
+                if random.random() < 0.05:
+                    idx1, idx2 = random.sample(range(self.num_nodes), 2)
+                    whales[i][idx1], whales[i][idx2] = whales[i][idx2], whales[i][idx1]
 
-    def _move_towards(self, source, target):
+                fit = self.get_fitness(whales[i])
+                fits[i] = fit
+                if fit < leader_fit: leader, leader_fit = whales[i].copy(), fit
+            history.append(leader_fit)
+            div_history.append(self.calculate_diversity(whales))
+        return {'best_fitness': leader_fit, 'runtime': time.time() - start_time, 'fitness_history': history, 'diversity_history': div_history}
+
+    def _move_towards(self, source, target, magnitude):
         res = source.copy()
-        num_swaps = random.randint(1, max(1, self.num_nodes // 10))
-        for _ in range(num_swaps):
-            i = random.randrange(self.num_nodes)
+        num_swaps = max(1, int(self.num_nodes * min(magnitude, 0.5)))
+        swaps = 0
+        for i in range(self.num_nodes):
             if res[i] != target[i]:
                 idx = np.where(res == target[i])[0][0]
                 res[i], res[idx] = res[idx], res[i]
+                swaps += 1
+                if swaps >= num_swaps: break
         return res
 
 # --- 5. Ant Colony Optimization (ACO) ---
@@ -281,7 +291,7 @@ def worker_func(task, target_dir):
         if algorithm == 'SA': model = SimulatedAnnealing(instance)
         elif algorithm == 'PSO': model = PSO(instance)
         elif algorithm == 'GWO': model = GWO(instance)
-        elif algorithm == 'FA': model = FA(instance)
+        elif algorithm == 'WOA': model = WOA(instance)
         elif algorithm == 'ACO': model = ACO(instance)
         elif algorithm == 'BCO': model = BCO(instance)
         else: return
@@ -305,7 +315,7 @@ def main():
     solomon_files = glob.glob(os.path.join(solomon_base_dir, "**", "*.csv"), recursive=True)
     uchoa_files = glob.glob(os.path.join(uchoa_base_dir, "*.vrp"))
     
-    all_available = ['SA', 'PSO', 'GWO', 'FA', 'ACO', 'BCO']
+    all_available = ['SA', 'PSO', 'GWO', 'WOA', 'ACO', 'BCO']
     if len(sys.argv) > 1 and sys.argv[1].upper() in all_available:
         algorithms = [sys.argv[1].upper()]
     else:
