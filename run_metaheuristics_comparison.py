@@ -359,7 +359,7 @@ def main():
     
     target_dir = os.path.join(BASE_DIR, "results_metaheuristics")
     solomon_base_dir = os.path.join(BASE_DIR, "data", "solomon")
-    uchoa_base_dir = os.path.join(BASE_DIR, "data", "uchoa")
+    uchoa_base_dir = os.path.join(BASE_DIR, "data", "Uchoa")
     
     all_available = ['SA', 'PSO', 'GWO', 'WOA', 'ACO', 'BCO']
     if args.algorithm.upper() in all_available:
