@@ -12,14 +12,16 @@ from copy import deepcopy
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 
-try:
     from src.representation.permutation import PermutationRepresentation
+    from src.selection.selection_methods import get_selection_method
+    from src.crossover.permutation_crossover import get_permutation_crossover
+    from src.mutation.permutation_mutation import get_permutation_mutation
 except ImportError:
-    print("Error: Could not find 'src' directory. Please run this script from the project root.")
+    print("Error: Could not find 'src' directory or required modules. Please run this script from the project root.")
     sys.exit(1)
 
 # Parameters for Apple-to-Apple comparison
-POPULATION_SIZE = 100
+POPULATION_SIZE = 80
 MAX_ITERATIONS = 500
 NUM_RUNS = 5
 
@@ -309,6 +311,71 @@ class BCO(MetaheuristicBase):
         res[i], res[j] = res[j], res[i]
         return res
 
+# --- 7. Conventional Genetic Algorithm (GA) ---
+class GA(MetaheuristicBase):
+    def __init__(self, instance):
+        super().__init__(instance)
+        self.selection_method = get_selection_method("roulette_wheel")
+        self.crossover_method = get_permutation_crossover("scx")
+        self.mutation_method = get_permutation_mutation("inversion")
+
+    def run(self):
+        start_time = time.time()
+        pc = 0.8  # Fixed crossover probability
+        pm = 0.2  # Fixed mutation probability
+        
+        population = [self.representation.create_chromosome() for _ in range(POPULATION_SIZE)]
+        fits = np.array([self.get_fitness(p) for p in population])
+        
+        best_idx = np.argmin(fits)
+        best_chrom = population[best_idx].copy()
+        best_fit = fits[best_idx]
+        
+        history, div_history = [], []
+        
+        for it in range(MAX_ITERATIONS):
+            new_population = []
+            # Elitism
+            new_population.append(best_chrom.copy())
+            
+            while len(new_population) < POPULATION_SIZE:
+                # Selection
+                parent_indices = self.selection_method.select(population, fits, num_parents=2, minimize=True)
+                p1, p2 = population[parent_indices[0]], population[parent_indices[1]]
+                
+                # Crossover
+                c1, c2 = self.crossover_method.crossover(p1, p2, crossover_rate=pc, dist_matrix=self.dist_matrix)
+                
+                # Mutation
+                c1 = self.mutation_method.mutate(c1, mutation_rate=pm)
+                c2 = self.mutation_method.mutate(c2, mutation_rate=pm)
+                
+                # Repair
+                c1 = self.representation.repair(c1)
+                c2 = self.representation.repair(c2)
+                
+                new_population.append(c1)
+                if len(new_population) < POPULATION_SIZE:
+                    new_population.append(c2)
+            
+            population = new_population[:POPULATION_SIZE]
+            fits = np.array([self.get_fitness(p) for p in population])
+            
+            curr_best_idx = np.argmin(fits)
+            if fits[curr_best_idx] < best_fit:
+                best_fit = fits[curr_best_idx]
+                best_chrom = population[curr_best_idx].copy()
+            
+            history.append(best_fit)
+            div_history.append(self.calculate_diversity(population))
+            
+        return {
+            'best_fitness': best_fit, 
+            'runtime': time.time() - start_time, 
+            'fitness_history': history, 
+            'diversity_history': div_history
+        }
+
 def worker_func(task, target_dir):
     instance_path, instance_name, dataset_type, algorithm = task
     out_dir = os.path.join(target_dir, f"{dataset_type}_Result", instance_name)
@@ -334,6 +401,7 @@ def worker_func(task, target_dir):
         elif algorithm == 'WOA': model = WOA(instance)
         elif algorithm == 'ACO': model = ACO(instance)
         elif algorithm == 'BCO': model = BCO(instance)
+        elif algorithm == 'GA': model = GA(instance)
         else: return
         res = model.run()
         all_fitness.append(res['fitness_history']); all_diversity.append(res['diversity_history'])
@@ -361,7 +429,7 @@ def main():
     solomon_base_dir = os.path.join(BASE_DIR, "data", "solomon")
     uchoa_base_dir = os.path.join(BASE_DIR, "data", "Uchoa")
     
-    all_available = ['SA', 'PSO', 'GWO', 'WOA', 'ACO', 'BCO']
+    all_available = ['GA', 'SA', 'PSO', 'GWO', 'WOA', 'ACO', 'BCO']
     if args.algorithm.upper() in all_available:
         algorithms = [args.algorithm.upper()]
     else:

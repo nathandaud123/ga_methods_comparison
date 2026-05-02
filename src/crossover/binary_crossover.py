@@ -142,32 +142,6 @@ class ShuffleCrossover(BinaryCrossover):
         return child1, child2
 
 
-class ArithmeticCrossover(BinaryCrossover):
-    """
-    Arithmetic Crossover
-    Michalewicz (1996)
-    """
-    
-    @staticmethod
-    def crossover(parent1: np.ndarray, parent2: np.ndarray, 
-                  crossover_rate: float = 0.8, alpha: float = 0.5) -> Tuple[np.ndarray, np.ndarray]:
-        if np.random.random() > crossover_rate:
-            return parent1.copy(), parent2.copy()
-        
-        # Convert to float, perform arithmetic, convert back to binary
-        p1_float = parent1.astype(float)
-        p2_float = parent2.astype(float)
-        
-        child1_float = alpha * p1_float + (1 - alpha) * p2_float
-        child2_float = alpha * p2_float + (1 - alpha) * p1_float
-        
-        # Convert back to binary (threshold at 0.5)
-        child1 = (child1_float >= 0.5).astype(int)
-        child2 = (child2_float >= 0.5).astype(int)
-        
-        return child1, child2
-
-
 # Registry
 BINARY_CROSSOVER_METHODS = {
     'single_point': SinglePointCrossover,
@@ -175,7 +149,6 @@ BINARY_CROSSOVER_METHODS = {
     'multi_point': MultiPointCrossover,
     'uniform': UniformCrossover,
     'shuffle': ShuffleCrossover,
-    'arithmetic': ArithmeticCrossover,
 }
 
 
