@@ -12,6 +12,7 @@ from copy import deepcopy
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 
+try:
     from src.representation.permutation import PermutationRepresentation
     from src.selection.selection_methods import get_selection_method
     from src.crossover.permutation_crossover import get_permutation_crossover
